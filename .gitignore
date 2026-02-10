@@ -2,3 +2,4 @@ test.py
 data/
 build/
 fly_env/
+dist/
