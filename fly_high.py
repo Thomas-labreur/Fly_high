@@ -5,26 +5,10 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QGraphicsLineItem, QGraphicsEllipseItem, QFileDialog,
     QVBoxLayout, QWidget, QPushButton, QHBoxLayout, QTableWidget,
-    QTableWidgetItem, QLabel, QInputDialog
+    QTableWidgetItem, QInputDialog, QToolButton, QMessageBox
 )
-from PyQt6.QtGui import QPixmap, QPen
+from PyQt6.QtGui import QPixmap, QPen, QIcon
 from PyQt6.QtCore import Qt, QPointF, QLineF
-
-
-class ImageView(QGraphicsView):
-    def __init__(self, scene):
-        super().__init__(scene)
-        self.mode = None
-        self.temp_line = None
-        self.start_point = None
-        self.parent = None
-        self.last_line = None  # <-- ligne précédente
-        self.zoom_factor = 1.15
-
-        # Activer la transformation du point de vue pour que le zoom soit centré
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        #self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
 
 class ImageView(QGraphicsView):
     def __init__(self, scene):
@@ -65,7 +49,8 @@ class ImageView(QGraphicsView):
                 self.last_line = None
 
             self.temp_line = QGraphicsLineItem()
-            self.temp_line.setPen(QPen(Qt.GlobalColor.red, 2))
+            color = Qt.GlobalColor.red if self.mode == "sol" else Qt.GlobalColor.green
+            self.temp_line.setPen(QPen(color, 2))
             self.scene().addItem(self.temp_line)
 
         elif self.mode == "fly":
@@ -120,24 +105,31 @@ class MainWindow(QMainWindow):
         self.ground_line = None
         self.scale_line = None
         self.scale_cm_per_px = None
+        self.current_tube = "Tube 1"
 
         # Points des mouches
         self.fly_points = []
 
         # Table pour afficher les mesures
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["ID", "Hauteur (cm)", "Position X (px)", "Position Y (px)"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["ID", "Hauteur (cm)", "Tube", "Position X (px)", "Position Y (px)"])
 
         # Boutons pour les modes
         self.buttons = {}
         buttons_layout = QHBoxLayout()
-        modes = [("Sol", "sol", "red"), ("Échelle", "scale", "green"), ("Mouche", "fly", "blue")]
+        modes = [("Sol", "sol", "red"), ("Échelle", "scale", "lightgreen"), ("Mouche", "fly", "#4169E1")]
         for name, mode, color in modes:
             btn = QPushButton(name)
             btn.clicked.connect(lambda _, m=mode: self.set_mode(m))
             btn.setStyleSheet("background-color: lightgray")
             buttons_layout.addWidget(btn)
             self.buttons[mode] = {"button": btn, "color": color}
+
+        # Bouton tube
+        self.tube_btn = QPushButton(f"Tube: {self.current_tube}")
+        self.tube_btn.clicked.connect(self.set_tube)
+        self.tube_btn.setStyleSheet("background-color: lightgray")
+        buttons_layout.addWidget(self.tube_btn)
 
         # Layout table + bouton d'export
         table_layout = QVBoxLayout()
@@ -150,6 +142,18 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout()
         content_layout.addLayout(table_layout)
         content_layout.addWidget(self.view, 1) # stretch = 1 pour prendre le reste de l'espace
+
+        # Bouton de rotation de l'image de 90°
+        self.rotate_btn = QToolButton(self.view)
+        self.rotate_btn.setText("↻")  
+        self.rotate_btn.setStyleSheet("""
+            background-color: rgba(255,255,255,200);
+            border: 1px solid gray;
+            border-radius: 10px;
+        """)
+        self.rotate_btn.resize(30, 30)
+        self.rotate_btn.clicked.connect(self.rotate_image)
+        self.update_rotate_btn_position()
 
         # Layout principal
         layout = QVBoxLayout()
@@ -166,7 +170,8 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Ouvrir image")
         if path:
             pixmap = QPixmap(path)
-            self.scene.addPixmap(pixmap)
+            self.pixmap_item = self.scene.addPixmap(pixmap)
+            self.pixmap_item.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
 
     def set_mode(self, mode):
         self.view.mode = mode
@@ -178,6 +183,12 @@ class MainWindow(QMainWindow):
         # Colorer le bouton actif selon sa couleur
         if mode in self.buttons:
             self.buttons[mode]["button"].setStyleSheet(f"background-color: {self.buttons[mode]['color']}")
+
+    def set_tube(self):
+        tube, ok = QInputDialog.getText(self, "Nom du tube", "Entrer le nom du tube:")
+        if ok and tube:
+            self.current_tube = tube
+            self.tube_btn.setText(f"Tube: {self.current_tube}")
 
     def set_ground(self, line):
         # Supprime l'ancienne ligne du sol si elle existe
@@ -223,16 +234,25 @@ class MainWindow(QMainWindow):
         self.recalculate_heights()
 
     def add_fly(self, pos):
+        
+        # Affichage d'un message d'erreur
         if not self.ground_line or not self.scale_cm_per_px:
-            print("Définir d'abord sol et échelle !")
-            return
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Icon.Warning)
+                msg.setWindowTitle("Erreur")
+                msg.setText("Définir d'abord le sol et l'échelle avant d'ajouter une mouche !")
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.exec()
+                return
 
+        # Point
         r = 4
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
         point.setPen(QPen(Qt.GlobalColor.blue))
         self.scene.addItem(point)
 
-        self.fly_points.append({"item": point, "pos": pos})
+        # Mise à jour de la table
+        self.fly_points.append({"item": point, "pos": pos, "tube": self.current_tube})
         self.recalculate_heights()
 
     def remove_fly(self, item):
@@ -261,8 +281,28 @@ class MainWindow(QMainWindow):
             self.table.insertRow(row)
             self.table.setItem(row, 0, QTableWidgetItem(str(idx)))
             self.table.setItem(row, 1, QTableWidgetItem(f"{height_cm:.2f}"))
-            self.table.setItem(row, 2, QTableWidgetItem(f"{pos.x():.2f}"))
-            self.table.setItem(row, 3, QTableWidgetItem(f"{pos.y():.2f}"))
+            self.table.setItem(row, 2, QTableWidgetItem(fly["tube"]))
+            self.table.setItem(row, 3, QTableWidgetItem(f"{pos.x():.2f}"))
+            self.table.setItem(row, 4, QTableWidgetItem(f"{pos.y():.2f}"))
+    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_rotate_btn_position()
+
+    def update_rotate_btn_position(self):
+        margin = 10
+        # Détecte la largeur de la scrollbar verticale
+        scrollbar_width = self.view.verticalScrollBar().width()
+        x = self.view.width() - self.rotate_btn.width() - margin - scrollbar_width
+        y = margin
+        self.rotate_btn.move(x, y)
+
+    def rotate_image(self):
+        if hasattr(self, "pixmap_item"):
+            self.pixmap_item.setRotation(self.pixmap_item.rotation() + 90)
+
+
+
 
     def export_csv(self):
         path, _ = QFileDialog.getSaveFileName(
