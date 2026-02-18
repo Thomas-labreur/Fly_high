@@ -1,14 +1,23 @@
-import sys, csv
+import sys, csv, os, markdown
 import numpy as np
-import pandas as pd
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QGraphicsLineItem, QGraphicsEllipseItem, QFileDialog,
     QVBoxLayout, QWidget, QPushButton, QHBoxLayout, QTableWidget,
-    QTableWidgetItem, QInputDialog, QToolButton, QMessageBox
+    QTableWidgetItem, QInputDialog, QToolButton, QMessageBox,
+    QDialog, QTextBrowser
 )
-from PyQt6.QtGui import QPixmap, QPen, QIcon
-from PyQt6.QtCore import Qt, QPointF, QLineF
+from PyQt6.QtGui import QPixmap, QPen
+from PyQt6.QtCore import Qt
+
+def resource_path(relative_path):
+    """Retourne le chemin absolu pour PyInstaller"""
+    try:
+        base_path = sys._MEIPASS  # chemin temporaire PyInstaller
+    except AttributeError:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 class ImageView(QGraphicsView):
     def __init__(self, scene):
@@ -137,6 +146,12 @@ class MainWindow(QMainWindow):
         self.tube_btn.setStyleSheet("background-color: lightgray")
         buttons_layout.addWidget(self.tube_btn)
 
+        # Bouton Aide
+        help_btn = QPushButton("Aide")
+        help_btn.clicked.connect(self.show_help)
+        help_btn.setStyleSheet("background-color: lightgray")
+        buttons_layout.addWidget(help_btn)
+
         # Layout table + bouton d'export
         table_layout = QVBoxLayout()
         table_layout.addWidget(self.table)
@@ -195,8 +210,10 @@ class MainWindow(QMainWindow):
         )
         if path:
             pixmap = QPixmap(path)
-            pixmap_item = self.scene.addPixmap(pixmap)
-            self.pixmap_item = pixmap_item
+            self.pixmap_item = self.scene.addPixmap(pixmap)
+            self.image_width = pixmap.width()
+            self.image_height = pixmap.height()
+        
             # rotation centrée sur le centre et a la taille de l'image
             self.pixmap_item.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
             self.view.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
@@ -212,6 +229,11 @@ class MainWindow(QMainWindow):
         self.scale_line = None
         self.scale_cm_per_px = None
 
+        # Réinitialiser les objets de l'image
+        self.view.last_line = None
+        self.view.temp_line = None
+        self.view.start_point = None
+
         # Supprimer les mouches
         self.fly_points = []
 
@@ -221,8 +243,6 @@ class MainWindow(QMainWindow):
         # Réinitialiser tube
         self.current_tube = "Tube 1"
         self.tube_btn.setText(f"Tube : {self.current_tube}")
-
-
 
     def set_mode(self, mode):
         self.view.mode = mode
@@ -295,9 +315,14 @@ class MainWindow(QMainWindow):
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                 msg.exec()
                 return
+        
+        # Point size
+        if hasattr(self, "image_width"):
+            r = 0.005 * min(self.image_width, self.image_height)
+        else:
+            r = 4
 
         # Point
-        r = 4
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
         point.setPen(QPen(Qt.GlobalColor.blue))
         self.scene.addItem(point)
@@ -351,7 +376,29 @@ class MainWindow(QMainWindow):
         if hasattr(self, "pixmap_item"):
             self.pixmap_item.setRotation(self.pixmap_item.rotation() + 90)
 
+    def show_help(self):
+        help_path = resource_path("doc.md")
+        if not os.path.exists(help_path):
+            QMessageBox.warning(self, "Erreur", "Fichier doc.md introuvable.")
+            return
 
+        with open(help_path, "r", encoding="utf-8") as f:
+            md_text = f.read()
+
+        html = markdown.markdown(md_text)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Aide - Flheight")
+        dialog.resize(600, 500)
+
+        layout = QVBoxLayout()
+        browser = QTextBrowser()
+        browser.setHtml(html)
+
+        layout.addWidget(browser)
+        dialog.setLayout(layout)
+
+        dialog.exec()
 
 
     def export_csv(self):
