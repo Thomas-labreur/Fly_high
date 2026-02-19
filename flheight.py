@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QGraphicsLineItem, QGraphicsEllipseItem, QFileDialog,
     QVBoxLayout, QWidget, QPushButton, QHBoxLayout, QTableWidget,
     QTableWidgetItem, QInputDialog, QToolButton, QMessageBox,
-    QDialog, QTextBrowser
+    QDialog, QTextBrowser, QSplitter
 )
 from PyQt6.QtGui import QPixmap, QPen
 from PyQt6.QtCore import Qt
@@ -161,9 +161,15 @@ class MainWindow(QMainWindow):
         table_layout.addWidget(export_btn)
 
         # Layout table + image
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        table_widget = QWidget()
+        table_widget.setLayout(table_layout)
+        splitter.addWidget(table_widget)
+        splitter.addWidget(self.view)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
         content_layout = QHBoxLayout()
-        content_layout.addLayout(table_layout)
-        content_layout.addWidget(self.view, 1) # stretch = 1 pour prendre le reste de l'espace
+        content_layout.addWidget(splitter)
 
         # Bouton de rotation de l'image de 90°
         self.rotate_btn = QToolButton(self.view)
