@@ -5,19 +5,224 @@ from PyQt6.QtWidgets import (
     QGraphicsLineItem, QGraphicsEllipseItem, QFileDialog,
     QVBoxLayout, QWidget, QPushButton, QHBoxLayout, QTableWidget,
     QTableWidgetItem, QInputDialog, QToolButton, QMessageBox,
-    QDialog, QTextBrowser, QSplitter
+    QDialog, QTextBrowser, QSplitter, QSlider, QLabel, QSpinBox,
+    QDialogButtonBox, QMenu, QSizePolicy
 )
-from PyQt6.QtGui import QPixmap, QPen
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QPen, QImage
+from PyQt6.QtCore import Qt, QSettings
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 def resource_path(relative_path):
-    """Retourne le chemin absolu pour PyInstaller"""
+    """Get absolute path (for pyinstaller)."""
     try:
-        base_path = sys._MEIPASS  # chemin temporaire PyInstaller
+        base_path = sys._MEIPASS
     except AttributeError:
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
+
+
+class VideoFrameSelector(QDialog):
+    """Dialog to select a frame in a video."""
+
+    def __init__(self, video_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Frame selection")
+        self.resize(900, 620)
+        self.video_path = video_path
+        self.selected_pixmap = None
+
+        # Open video
+        self.cap = cv2.VideoCapture(video_path)
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25
+
+        # --- Main layout ---
+        layout = QVBoxLayout(self)
+
+        # Frame preview
+        self.preview_label = QLabel()
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(400)
+        self.preview_label.setStyleSheet("background-color: #111; border-radius: 6px;")
+        layout.addWidget(self.preview_label)
+
+        # Frame informations
+        info_layout = QHBoxLayout()
+        self.frame_info_label = QLabel("Frame : 0")
+        self.frame_info_label.setStyleSheet("color: #555; font-size: 11px;")
+        self.time_info_label = QLabel("Temps : 0.00 s")
+        self.time_info_label.setStyleSheet("color: #555; font-size: 11px;")
+        info_layout.addWidget(self.frame_info_label)
+        info_layout.addWidget(self.time_info_label)
+        info_layout.addStretch()
+        self.fps_label = QLabel(f"FPS : {self.fps:.2f}")
+        self.fps_label.setStyleSheet("color: #555; font-size: 11px;")
+        info_layout.addWidget(self.fps_label)
+        layout.addLayout(info_layout)
+
+        # Navigation slider
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(max(0, self.total_frames - 1))
+        self.slider.setValue(0)
+        self.slider.valueChanged.connect(self.on_slider_changed)
+        layout.addWidget(self.slider)
+
+        # Navigation buttons (fine + spinbox)
+        nav_layout = QHBoxLayout()
+
+        btn_prev10 = QPushButton("« -10")
+        btn_prev10.clicked.connect(lambda: self.step_frames(-10))
+        btn_prev = QPushButton("‹ -1")
+        btn_prev.clicked.connect(lambda: self.step_frames(-1))
+
+        self.spinbox = QSpinBox()
+        self.spinbox.setMinimum(0)
+        self.spinbox.setMaximum(max(0, self.total_frames - 1))
+        self.spinbox.setValue(0)
+        self.spinbox.setPrefix("Frame : ")
+        self.spinbox.valueChanged.connect(self.on_spinbox_changed)
+
+        btn_next = QPushButton("+1 ›")
+        btn_next.clicked.connect(lambda: self.step_frames(1))
+        btn_next10 = QPushButton("+10 »")
+        btn_next10.clicked.connect(lambda: self.step_frames(10))
+        btn_goto = QPushButton("Go to…")
+        btn_goto.clicked.connect(self.goto_frame_dialog)
+        
+
+        for btn in [btn_prev10, btn_prev]:
+            btn.setFixedWidth(70)
+        for btn in [btn_next, btn_next10]:
+            btn.setFixedWidth(70)
+
+        nav_layout.addWidget(btn_prev10)
+        nav_layout.addWidget(btn_prev)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.spinbox)
+        nav_layout.addStretch()
+        nav_layout.addWidget(btn_next)
+        nav_layout.addWidget(btn_next10)
+        nav_layout.addWidget(btn_goto)
+        layout.addLayout(nav_layout)
+
+        # Ok / cancel buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # Display first frame
+        self._current_frame_index = 0
+        self._updating = False
+        self.show_frame(0)
+
+    def show_frame(self, index):
+        """Displays the frame from its index."""
+        index = max(0, min(index, self.total_frames - 1))
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, index)
+        ret, frame = self.cap.read()
+        if not ret:
+            return
+
+        # Convert BGR -> RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = frame_rgb.shape
+        bytes_per_line = ch * w
+        qimg = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg)
+
+        # Scaling for preview
+        preview_size = self.preview_label.size()
+        scaled = pixmap.scaled(preview_size, Qt.AspectRatioMode.KeepAspectRatio,
+                               Qt.TransformationMode.SmoothTransformation)
+        self.preview_label.setPixmap(scaled)
+
+        # Store full resolution pixmap to export
+        self.selected_pixmap = pixmap
+        self._current_frame_index = index
+
+        # Update informations
+        self.frame_info_label.setText(f"Frame : {index} / {self.total_frames - 1}")
+        time_s = index / self.fps if self.fps else 0
+        self.time_info_label.setText(f"Time : {time_s:.2f} s")
+
+    def on_slider_changed(self, value):
+        if self._updating:
+            return
+        self._updating = True
+        self.spinbox.setValue(value)
+        self.show_frame(value)
+        self._updating = False
+
+    def on_spinbox_changed(self, value):
+        if self._updating:
+            return
+        self._updating = True
+        self.slider.setValue(value)
+        self.show_frame(value)
+        self._updating = False
+
+    def goto_frame_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Go to…")
+        layout = QVBoxLayout(dialog)
+
+        # Frame or Time choice
+        mode_layout = QHBoxLayout()
+        btn_frame = QPushButton("By frame")
+        btn_time = QPushButton("By time (s)")
+        mode_layout.addWidget(btn_frame)
+        mode_layout.addWidget(btn_time)
+        layout.addLayout(mode_layout)
+
+        def go_by_frame():
+            index, ok = QInputDialog.getInt(self, "Go to…", "Frame index :",
+                                            self._current_frame_index, 0, self.total_frames - 1)
+            if ok:
+                self.step_frames(index - self._current_frame_index)
+            dialog.accept()
+
+        def go_by_time():
+            max_s = (self.total_frames - 1) / self.fps if self.fps else 0
+            current_s = self._current_frame_index / self.fps if self.fps else 0
+            seconds, ok = QInputDialog.getDouble(self, "Go to…", "Time (sec) :",
+                                                current_s, 0, max_s, 2)
+            if ok:
+                index = int(round(seconds * self.fps))
+                self.step_frames(index - self._current_frame_index)
+            dialog.accept()
+
+        btn_frame.clicked.connect(go_by_frame)
+        btn_time.clicked.connect(go_by_time)
+
+        dialog.exec()
+
+    def step_frames(self, delta):
+        new_index = self._current_frame_index + delta
+        new_index = max(0, min(new_index, self.total_frames - 1))
+        self._updating = True
+        self.slider.setValue(new_index)
+        self.spinbox.setValue(new_index)
+        self.show_frame(new_index)
+        self._updating = False
+
+    def closeEvent(self, event):
+        self.cap.release()
+        super().closeEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Refresh preview when zooming
+        self.show_frame(self._current_frame_index)
+
 
 class ImageView(QGraphicsView):
     def __init__(self, scene):
@@ -29,52 +234,36 @@ class ImageView(QGraphicsView):
         self.last_line = None
         self.zoom_factor = 1.15
 
-        # Transformation centrée sur la souris
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
 
     def wheelEvent(self, event):
-        """Zoom in/out centré sur la souris (PyQt6 / PySide6)"""
-        # Position de la souris dans la scène avant le zoom
         mouse_scene_pos = self.mapToScene(event.position().toPoint())
-
-        # Zoom in/out
         zoom = self.zoom_factor if event.angleDelta().y() > 0 else 1 / self.zoom_factor
         self.scale(zoom, zoom)
-
-        # Ajuster le scroll pour garder le point sous la souris fixe
         new_mouse_scene_pos = self.mapToScene(event.position().toPoint())
         delta = new_mouse_scene_pos - mouse_scene_pos
         self.translate(delta.x(), delta.y())
 
-
     def mousePressEvent(self, event):
         pos = self.mapToScene(event.pos())
-        if self.mode in ["sol", "scale"]:
+        if self.mode in ["ground", "scale"]:
             self.start_point = pos
-            # supprimer l'ancienne ligne si elle existe
             if self.last_line:
                 self.scene().removeItem(self.last_line)
                 self.last_line = None
-
             self.temp_line = QGraphicsLineItem()
-            color = Qt.GlobalColor.red if self.mode == "sol" else Qt.GlobalColor.green
+            color = Qt.GlobalColor.red if self.mode == "ground" else Qt.GlobalColor.green
             self.temp_line.setPen(QPen(color, 2))
             self.scene().addItem(self.temp_line)
 
         elif self.mode == "fly":
-
-            if event.button() == Qt.MouseButton.RightButton:  # clic droit pour supprimer
-
-                # On récupère tous les items à cet endroit
+            if event.button() == Qt.MouseButton.RightButton:
                 items = self.scene().items(pos)
-                
                 for item in items:
-                    # Vérifie si c'est un point de mouche (Ellipse bleu)
                     if isinstance(item, QGraphicsEllipseItem):
                         self.parent.remove_fly(item)
                         break
-
             else:
                 self.parent.add_fly(pos)
 
@@ -89,12 +278,10 @@ class ImageView(QGraphicsView):
     def mouseReleaseEvent(self, event):
         if self.temp_line:
             line = self.temp_line.line()
-            if self.mode == "sol":
+            if self.mode == "ground":
                 self.parent.set_ground(line)
             elif self.mode == "scale":
                 self.parent.set_scale(line)
-
-            # garder cette ligne pour suppression ultérieure
             self.last_line = self.temp_line
             self.temp_line = None
 
@@ -104,63 +291,84 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Flheight")
 
+        self.settings = QSettings("Config", "Flheight")
+        self.column_names = self.settings.value(
+            "table/column_names", 
+            defaultValue=["ID", "Height (cm)", "Tube", "X position (px)", "Y position (px)"]
+        )
+
         self.scene = QGraphicsScene()
         self.view = ImageView(self.scene)
         self.view.parent = self
 
-        # Ligne et échelle
         self.ground_line_item = None
         self.scale_line_item = None
         self.ground_line = None
         self.scale_line = None
         self.scale_cm_per_px = None
-        self.current_tube = "Tube 1"
+        self.current_group = "Tube 1"
 
-        # Points des mouches
         self.fly_points = []
 
-        # Table pour afficher les mesures
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: lightgray;
+            }
+            QPushButton:hover {
+                background-color: #b0b0b0;
+            }
+            QHeaderView::section:hover {
+                background-color: lightgray;
+            }
+        """)
+
+        # Table
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["ID", "Hauteur (cm)", "Tube", "Position X (px)", "Position Y (px)"])
+        self.table.setHorizontalHeaderLabels(self.column_names)
+        self.table.horizontalHeader().sectionDoubleClicked.connect(self.rename_column)
+        self.table.horizontalHeader().setToolTip("Double click to rename column.")
 
-        # Bouton ouvrir image
+        # --- Buttons ---
         buttons_layout = QHBoxLayout()
-        open_btn = QPushButton("Ouvrir image")
-        open_btn.clicked.connect(self.open_image)
-        open_btn.setStyleSheet("background-color: lightgray")
-        buttons_layout.addWidget(open_btn)
 
-        # Boutons pour les modes
+        file_btn = QPushButton("File")
+        file_menu = QMenu(self)
+        file_menu.addAction("Open image", self.open_image)
+        action_video = file_menu.addAction("Open video", self.open_video)
+        if not CV2_AVAILABLE:
+            action_video.setEnabled(False)
+        self.export_frame_action = file_menu.addAction("Export image as PNG", self.export_frame)
+        self.export_frame_action.setEnabled(False)
+        file_menu.addSeparator()
+        file_menu.addAction("Export table as CSV", self.export_csv)
+        file_btn.setMenu(file_menu)
+        buttons_layout.addWidget(file_btn)
+
+        # Modes buttons
         self.buttons = {}
-        modes = [("Sol", "sol", "red"), ("Échelle", "scale", "lightgreen"), ("Mouche", "fly", "#4169E1")]
+        modes = [("Ground", "ground", "red"), ("Scale", "scale", "lightgreen"), ("Fly", "fly", "#4169E1")]
         for name, mode, color in modes:
             btn = QPushButton(name)
             btn.clicked.connect(lambda _, m=mode: self.set_mode(m))
-            btn.setStyleSheet("background-color: lightgray")
+            btn.setEnabled(False)
             buttons_layout.addWidget(btn)
             self.buttons[mode] = {"button": btn, "color": color}
 
-        # Bouton tube
-        self.tube_btn = QPushButton(f"Tube: {self.current_tube}")
-        self.tube_btn.clicked.connect(self.set_tube)
-        self.tube_btn.setStyleSheet("background-color: lightgray")
-        buttons_layout.addWidget(self.tube_btn)
+        # Group button
+        self.group_btn = QPushButton(f"{self.column_names[2]}: {self.current_group}")
+        self.group_btn.clicked.connect(self.set_group)
+        buttons_layout.addWidget(self.group_btn)
 
-        # Bouton Aide
-        help_btn = QPushButton("Aide")
+        # Help button
+        help_btn = QPushButton("Help")
         help_btn.clicked.connect(self.show_help)
-        help_btn.setStyleSheet("background-color: lightgray")
         buttons_layout.addWidget(help_btn)
 
-        # Layout table + bouton d'export
+        # --- Table + export ---
         table_layout = QVBoxLayout()
         table_layout.addWidget(self.table)
-        export_btn = QPushButton("Exporter CSV")
-        export_btn.clicked.connect(self.export_csv)
-        export_btn.setStyleSheet("background-color: lightgray")
-        table_layout.addWidget(export_btn)
 
-        # Layout table + image
+        # Layout for table and image view
         splitter = QSplitter(Qt.Orientation.Horizontal)
         table_widget = QWidget()
         table_widget.setLayout(table_layout)
@@ -171,9 +379,17 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout()
         content_layout.addWidget(splitter)
 
-        # Bouton de rotation de l'image de 90°
+        # Label for image informations
+        self.image_info_label = QLabel("")
+        self.image_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_info_label.setStyleSheet("color: #555; font-size: 11px;")
+        self.image_info_label.setFixedHeight(20)
+        self.image_info_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.image_info_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        # Rotation button
         self.rotate_btn = QToolButton(self.view)
-        self.rotate_btn.setText("↻")  
+        self.rotate_btn.setText("↻")
         self.rotate_btn.setStyleSheet("""
             background-color: rgba(255,255,255,200);
             border: 1px solid gray;
@@ -183,197 +399,221 @@ class MainWindow(QMainWindow):
         self.rotate_btn.clicked.connect(self.rotate_image)
         self.update_rotate_btn_position()
 
-        # Layout principal
+        # Global layout
         layout = QVBoxLayout()
         layout.addLayout(buttons_layout)
+        layout.addWidget(self.image_info_label)
         layout.addLayout(content_layout)
 
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
 
+    # ------------------------------------------------------------------ #
+    #  Open image
+    # ------------------------------------------------------------------ #
     def open_image(self):
-        # 1️⃣ Popup pour demander export CSV
-        if self.table.rowCount() > 0:  # si on a des données
+        if self.table.rowCount() > 0:
             reply = QMessageBox.question(
                 self,
-                "Exporter avant d'ouvrir",
-                "Voulez-vous exporter votre travail avant d'ouvrir une nouvelle image ?",
+                "Exporter before open",
+                "Do you want to export your work before opening a new image ?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
             )
-
             if reply == QMessageBox.StandardButton.Cancel:
-                return  # annule l'ouverture
+                return
             elif reply == QMessageBox.StandardButton.Yes:
                 self.export_csv()
 
-        # 2️⃣ Supprimer l'image et tout le contenu
         self.clear_scene()
 
-        # 3️⃣ Demander un fichier image
         path, _ = QFileDialog.getOpenFileName(
-            self, "Ouvrir image", "", "Images (*.png *.jpg *.jpeg *.bmp)"
+            self, "Open image", "", "Images (*.png *.jpg *.jpeg *.bmp)"
         )
         if path:
-            pixmap = QPixmap(path)
-            self.pixmap_item = self.scene.addPixmap(pixmap)
-            self.image_width = pixmap.width()
-            self.image_height = pixmap.height()
-        
-            # rotation centrée sur le centre et a la taille de l'image
-            self.pixmap_item.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
-            self.view.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+            self._load_pixmap(QPixmap(path))
+            filename = os.path.basename(path)
+            self.image_info_label.setText(filename)
+            self.default_export_name = os.path.splitext(filename)[0]
 
+    # ------------------------------------------------------------------ #
+    #  Open video
+    # ------------------------------------------------------------------ #
+    def open_video(self):
+        if not CV2_AVAILABLE:
+            QMessageBox.warning(self, "Missing module",
+                                "opencv-python module is required.\n"
+                                "Install with : pip install opencv-python")
+            return
+
+        if self.table.rowCount() > 0:
+            reply = QMessageBox.question(
+                self,
+                "Export before open",
+                "Do you want to export your work before opening a new image ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                self.export_csv()
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open video", "", "Videos (*.mp4 *.avi *.mov *.mkv)"
+        )
+        if not path:
+            return
+
+        # Open frame selctor
+        dialog = VideoFrameSelector(path, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_pixmap:
+            self.clear_scene()
+            self._load_pixmap(dialog.selected_pixmap, from_video=True)
+            videoname = os.path.basename(path)
+            frame = dialog._current_frame_index
+            timecode = frame / dialog.fps
+            info = f"{videoname} | Framerate: {dialog.fps:.2f} FPS | Frame: {frame} ({timecode:.2f}s)"
+            self.image_info_label.setText(info)
+            self.default_export_name = f"{os.path.splitext(videoname)[0]}_frame{frame}_{timecode:.2f}s"
+
+    # ------------------------------------------------------------------ #
+    #  Loading QPixmap in the scene
+    # ------------------------------------------------------------------ #
+    def _load_pixmap(self, pixmap: QPixmap, from_video=False):
+        self.pixmap_item = self.scene.addPixmap(pixmap)
+        self.image_width = pixmap.width()
+        self.image_height = pixmap.height()
+        self.pixmap_item.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
+        self.scene_group = self.scene.createItemGroup([self.pixmap_item])
+        self.scene_group.setTransformOriginPoint(self.pixmap_item.boundingRect().center())
+        self.view.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+        self.current_pixmap = pixmap
+        self.export_frame_action.setEnabled(from_video)
+        for mode, info in self.buttons.items():
+            info["button"].setEnabled(True)
+
+    # ------------------------------------------------------------------ #
+    #  Clear the scene
+    # ------------------------------------------------------------------ #
     def clear_scene(self):
-        # Supprime tous les items de la scène
         self.scene.clear()
-
-        # Réinitialiser sol et échelle
+        self.image_info_label.setText("")
+        self.default_export_name = ""
         self.ground_line_item = None
         self.scale_line_item = None
         self.ground_line = None
         self.scale_line = None
         self.scale_cm_per_px = None
-
-        # Réinitialiser les objets de l'image
         self.view.last_line = None
         self.view.temp_line = None
         self.view.start_point = None
-
-        # Supprimer les mouches
         self.fly_points = []
-
-        # Réinitialiser le tableau
         self.table.setRowCount(0)
+        self.current_group = "Tube 1"
+        self.group_btn.setText(f"Group : {self.current_group}")
+        for mode, info in self.buttons.items():
+            info["button"].setEnabled(False)
 
-        # Réinitialiser tube
-        self.current_tube = "Tube 1"
-        self.tube_btn.setText(f"Tube : {self.current_tube}")
-
+    # ------------------------------------------------------------------ #
+    #  Set up parameters
+    # ------------------------------------------------------------------ #
     def set_mode(self, mode):
         self.view.mode = mode
-
-        # Mettre tous les boutons en gris clair
         for m, info in self.buttons.items():
-            info["button"].setStyleSheet("background-color: lightgray")
-
-        # Colorer le bouton actif selon sa couleur
+            info["button"].setStyleSheet("")  # reset
         if mode in self.buttons:
-            self.buttons[mode]["button"].setStyleSheet(f"background-color: {self.buttons[mode]['color']}")
+            color = self.buttons[mode]['color']
+            self.buttons[mode]["button"].setStyleSheet(f"""
+                QPushButton {{ background-color: {color}; }}
+            """)
 
-    def set_tube(self):
-        tube, ok = QInputDialog.getText(self, "Nom du tube", "Entrer le nom du tube:")
-        if ok and tube:
-            self.current_tube = tube
-            self.tube_btn.setText(f"Tube: {self.current_tube}")
+    def set_group(self):
+        group, ok = QInputDialog.getText(self, "Group name", "Enter group name:")
+        if ok and group:
+            self.current_group = group
+            self.group_btn.setText(f"self.column_names[2]: {self.current_group}")
 
     def set_ground(self, line):
-        # Supprime l'ancienne ligne du sol si elle existe
         if self.ground_line_item is not None:
             self.scene.removeItem(self.ground_line_item)
             self.ground_line_item = None
-
-        # Crée et ajoute la nouvelle ligne du sol
         self.ground_line_item = QGraphicsLineItem(line)
         self.ground_line_item.setPen(QPen(Qt.GlobalColor.red, 2))
+        self.scene_group.addToGroup(self.ground_line_item)
         self.scene.addItem(self.ground_line_item)
-
-        # Stocke la géométrie pour les calculs
         self.ground_line = line
-
-        # Recalculer les hauteurs pour toutes les mouches
         self.recalculate_heights()
 
     def set_scale(self, line):
-        # Supprime l'ancienne ligne de l'échelle si elle existe
         if self.scale_line_item is not None:
             self.scene.removeItem(self.scale_line_item)
             self.scale_line_item = None
-
-        # Demande la longueur réelle en cm
-        cm, ok = QInputDialog.getDouble(
-            self, "Échelle", "Longueur réelle (cm):"
-        )
+        cm, ok = QInputDialog.getDouble(self, "Scale", "Real length (cm)")
         if not ok:
             return
-
-        # Crée et ajoute la nouvelle ligne d'échelle
         self.scale_line_item = QGraphicsLineItem(line)
         self.scale_line_item.setPen(QPen(Qt.GlobalColor.green, 2))
+        self.scene_group.addToGroup(self.scale_line_item)
         self.scene.addItem(self.scale_line_item)
-
-        # Stocke la géométrie et le ratio cm/px
         self.scale_line = line
         length_px = np.hypot(line.dx(), line.dy())
         self.scale_cm_per_px = cm / length_px
-
-        # Recalculer les hauteurs pour toutes les mouches
         self.recalculate_heights()
 
+    # ------------------------------------------------------------------ #
+    #  Manage flies (points)
+    # ------------------------------------------------------------------ #
     def add_fly(self, pos):
-        
-        # Affichage d'un message d'erreur
         if not self.ground_line or not self.scale_cm_per_px:
-                msg = QMessageBox(self)
-                msg.setIcon(QMessageBox.Icon.Warning)
-                msg.setWindowTitle("Erreur")
-                msg.setText("Définir d'abord le sol et l'échelle avant d'ajouter une mouche !")
-                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-                msg.exec()
-                return
-        
-        # Point size
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Icon.Warning)
+            msg.setWindowTitle("Error")
+            msg.setText("Define ground and scale before adding points.")
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+            return
+
         if hasattr(self, "image_width"):
             r = 0.005 * min(self.image_width, self.image_height)
         else:
             r = 4
 
-        # Point
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
         point.setPen(QPen(Qt.GlobalColor.blue))
         self.scene.addItem(point)
-
-        # Mise à jour de la table
-        self.fly_points.append({"item": point, "pos": pos, "tube": self.current_tube})
+        self.fly_points.append({"item": point, "pos": pos, "group": self.current_group})
         self.recalculate_heights()
 
     def remove_fly(self, item):
-        # Retirer le point de la scène
         self.scene.removeItem(item)
-
-        # Retirer de la liste fly_points
         self.fly_points = [f for f in self.fly_points if f["item"] != item]
-
-        # Recalculer les hauteurs dans le tableau
         self.recalculate_heights()
 
-
     def recalculate_heights(self):
-        """Recalculer toutes les hauteurs dans la table selon le sol et l'échelle actuels."""
         self.table.setRowCount(0)
         if not self.ground_line or not self.scale_cm_per_px:
             return
-
         for idx, fly in enumerate(self.fly_points):
             pos = fly["pos"]
             height_px = self.point_to_line_distance(pos, self.ground_line)
             height_cm = height_px * self.scale_cm_per_px
-
             row = self.table.rowCount()
             self.table.insertRow(row)
             self.table.setItem(row, 0, QTableWidgetItem(str(idx)))
             self.table.setItem(row, 1, QTableWidgetItem(f"{height_cm:.2f}"))
-            self.table.setItem(row, 2, QTableWidgetItem(fly["tube"]))
+            self.table.setItem(row, 2, QTableWidgetItem(fly["group"]))
             self.table.setItem(row, 3, QTableWidgetItem(f"{pos.x():.2f}"))
             self.table.setItem(row, 4, QTableWidgetItem(f"{pos.y():.2f}"))
-    
+
+    # ------------------------------------------------------------------ #
+    #  Zoom and rotations handling
+    # ------------------------------------------------------------------ #
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.update_rotate_btn_position()
 
     def update_rotate_btn_position(self):
         margin = 20
-        # Détecte la largeur de la scrollbar verticale
         x = self.view.width() - self.rotate_btn.width() - margin
         y = margin
         self.rotate_btn.move(x, y)
@@ -382,45 +622,50 @@ class MainWindow(QMainWindow):
         if hasattr(self, "pixmap_item"):
             self.pixmap_item.setRotation(self.pixmap_item.rotation() + 90)
 
+    # Rename columns
+    def rename_column(self, index):
+        current = self.table.horizontalHeaderItem(index).text()
+        name, ok = QInputDialog.getText(self, "Rename column", "New name :", text=current)
+        if ok and name:
+            self.table.setHorizontalHeaderItem(index, QTableWidgetItem(name))
+            self.column_names[index] = name
+            self.settings.setValue("table/column_names", self.column_names)
+            self.group_btn.setText(f"{self.column_names[2]}: {self.current_group}")
+
+    # ------------------------------------------------------------------ #
+    #  Help button
+    # ------------------------------------------------------------------ #
     def show_help(self):
         help_path = resource_path("doc.md")
         if not os.path.exists(help_path):
             QMessageBox.warning(self, "Erreur", "Fichier doc.md introuvable.")
             return
-
         with open(help_path, "r", encoding="utf-8") as f:
             md_text = f.read()
-
         html = markdown.markdown(md_text)
-
         dialog = QDialog(self)
-        dialog.setWindowTitle("Aide - Flheight")
+        dialog.setWindowTitle("Help - Flheight")
         dialog.resize(600, 500)
-
         layout = QVBoxLayout()
         browser = QTextBrowser()
         browser.setHtml(html)
-
         layout.addWidget(browser)
         dialog.setLayout(layout)
-
         dialog.exec()
 
-
+    # ------------------------------------------------------------------ #
+    #  Export button
+    # ------------------------------------------------------------------ #
     def export_csv(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, "Enregistrer CSV", "", "Fichiers CSV (*.csv)"
+            self, "Save CSV", "", "CSV files (*.csv)"
         )
         if not path:
             return
-
-        # Exporter la table
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            # écrire l'en-tête
             headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
             writer.writerow(headers)
-            # écrire les lignes
             for row in range(self.table.rowCount()):
                 row_data = []
                 for col in range(self.table.columnCount()):
@@ -428,18 +673,23 @@ class MainWindow(QMainWindow):
                     row_data.append(item.text() if item else "")
                 writer.writerow(row_data)
 
-            
+    def export_frame(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Export image", self.default_export_name, "Image PNG (*.png)")
+        if path:
+            self.current_pixmap.save(path, "PNG")
 
     @staticmethod
     def point_to_line_distance(P, line):
         A = np.array([line.x1(), line.y1()])
         B = np.array([line.x2(), line.y2()])
         P = np.array([P.x(), P.y()])
-        return np.abs(np.cross(B - A, A - P)) / np.linalg.norm(B - A)
-
+        d = B - A
+        p = A - P
+        return np.abs(d[0] * p[1] - d[1] * p[0]) / np.linalg.norm(d)
 
 
 app = QApplication(sys.argv)
+#app.setStyle("Fusion")
 window = MainWindow()
 window.showMaximized()
 sys.exit(app.exec())

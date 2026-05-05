@@ -11,5 +11,5 @@ python flheight.py
 ## Générer un exe
 ```bash
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name Flheight flheight.py
+pyinstaller --onefile --add-data "doc.md;." --windowed --name Flheight flheight.py
 ```
