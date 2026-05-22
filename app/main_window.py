@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         # Mode buttons
         self.buttons = {}
         modes = [
+            ("✥ Nav", "nav", "#888888"),
             ("Ground", "ground", "#e05555"), 
             ("Scale", "scale", "#69fa4f"), 
             ("ROI", "roi", "#f84ef5"),
@@ -497,6 +498,7 @@ class MainWindow(QMainWindow):
         self.current_pixmap = pixmap
         self.export_frame_action.setEnabled(from_video)
         self.auto_detect_btn.setEnabled(True)
+        self.set_mode("nav") 
         for mode, info in self.buttons.items():
             info["button"].setEnabled(True)
 
@@ -533,8 +535,14 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     def set_mode(self, mode):
         self.view.mode = mode
+        if mode == "nav":
+            self.view.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.view.setCursor(Qt.CursorShape.ArrowCursor)
+
         for m, info in self.buttons.items():
             info["button"].setStyleSheet("")
+
         if mode in self.buttons:
             color = self.buttons[mode]["active_color"]
             self.buttons[mode]["button"].setStyleSheet(f"""
@@ -562,7 +570,15 @@ class MainWindow(QMainWindow):
         if self.scale_line_item is not None:
             self.scene.removeItem(self.scale_line_item)
             self.scale_line_item = None
-        cm, ok = QInputDialog.getDouble(self, "Scale", "Real length (cm)")
+
+        s = QSettings("Config", "Flheight")
+        last_scale = float(s.value("scale/last_cm", 0.0))
+
+        cm, ok = QInputDialog.getDouble(self, "Scale", "Real length (cm)", value=last_scale, min=0.0)
+        
+        if not ok:
+            return
+        s.setValue("scale/last_cm", cm)
         if not ok:
             return
         self.scale_line_item = QGraphicsLineItem(line)

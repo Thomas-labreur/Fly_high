@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QDialog, QSlider, QLabel, QSpinBox, QDialogButtonBox, QComboBox,
 )
 from PyQt6.QtGui import QPixmap, QImage
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QSettings
 
 try:
     import cv2
@@ -146,8 +146,17 @@ class VideoFrameSelector(QDialog):
         btn_next.clicked.connect(lambda: self.step_frames(1))
         btn_next10 = QPushButton("+10 »")
         btn_next10.clicked.connect(lambda: self.step_frames(10))
-        btn_goto = QPushButton("Go to…")
-        btn_goto.clicked.connect(self.goto_frame_dialog)
+
+        # Go to button
+        self.settings = QSettings("MonApp", "VideoFrameSelector")
+        self.goto_seconds = self.settings.value("goto_seconds", 4.0, type=float)
+        btn_goto = QPushButton(f"Jump +{self.goto_seconds:.0f}s")
+        self.btn_goto = btn_goto
+        btn_goto.clicked.connect(self.goto_jump)
+        btn_goto_setup = QPushButton("⚙")
+        btn_goto_setup.setFixedWidth(45)
+        btn_goto_setup.setToolTip("Set jump duration")
+        btn_goto_setup.clicked.connect(self.goto_setup_dialog)
 
         for btn in [btn_prev10, btn_prev]:
             btn.setFixedWidth(70)
@@ -162,6 +171,7 @@ class VideoFrameSelector(QDialog):
         nav_layout.addWidget(btn_next)
         nav_layout.addWidget(btn_next10)
         nav_layout.addWidget(btn_goto)
+        nav_layout.addWidget(btn_goto_setup)
         layout.addLayout(nav_layout)
 
         buttons = QDialogButtonBox(
@@ -252,37 +262,21 @@ class VideoFrameSelector(QDialog):
         self.show_frame(value)
         self._updating = False
 
-    def goto_frame_dialog(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Go to…")
-        layout = QVBoxLayout(dialog)
-        mode_layout = QHBoxLayout()
-        btn_frame = QPushButton("By frame")
-        btn_time = QPushButton("By time (s)")
-        mode_layout.addWidget(btn_frame)
-        mode_layout.addWidget(btn_time)
-        layout.addLayout(mode_layout)
+    def goto_jump(self):
+        delta = int(round(self.goto_seconds * self.fps))
+        self.step_frames(delta)
 
-        def go_by_frame():
-            index, ok = QInputDialog.getInt(self, "Go to…", "Frame index :",
-                                            self._current_frame_index, 0, self.total_frames - 1)
-            if ok:
-                self.step_frames(index - self._current_frame_index)
-            dialog.accept()
+    def goto_setup_dialog(self):
+        max_s = (self.total_frames - 1) / self.fps if self.fps else 99999
+        val, ok = QInputDialog.getDouble(
+            self, "Jump duration", "Seconds :",
+            self.goto_seconds, 0.1, max_s, 1
+        )
+        if ok:
+            self.goto_seconds = val
+            self.settings.setValue("goto_seconds", val)
+            self.btn_goto.setText(f"+{val:.0f}s")
 
-        def go_by_time():
-            max_s = (self.total_frames - 1) / self.fps if self.fps else 0
-            current_s = self._current_frame_index / self.fps if self.fps else 0
-            seconds, ok = QInputDialog.getDouble(self, "Go to…", "Time (sec) :",
-                                                current_s, 0, max_s, 2)
-            if ok:
-                index = int(round(seconds * self.fps))
-                self.step_frames(index - self._current_frame_index)
-            dialog.accept()
-
-        btn_frame.clicked.connect(go_by_frame)
-        btn_time.clicked.connect(go_by_time)
-        dialog.exec()
 
     def step_frames(self, delta):
         new_index = self._current_frame_index + delta

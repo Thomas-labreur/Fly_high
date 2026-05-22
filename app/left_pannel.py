@@ -25,7 +25,6 @@ class LeftPanel(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         inner = QWidget()
         inner.setStyleSheet("background-color: #f5f5f5;")
@@ -147,6 +146,24 @@ class LeftPanel(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll)
 
+        self._load_settings()
+        for field, edit in self.metadata_fields.items():
+            if field != "Trial":
+                edit.textChanged.connect(lambda text, f=field: self._save_field(f, text))
+
+    def _save_field(self, field, value):
+        from PyQt6.QtCore import QSettings
+        s = QSettings("Config", "Flheight")
+        s.setValue(f"metadata/{field}", value)
+
+    def _load_settings(self):
+        from PyQt6.QtCore import QSettings
+        s = QSettings("Config", "Flheight")
+        for field, edit in self.metadata_fields.items():
+            if field != "Trial":
+                val = s.value(f"metadata/{field}", "")
+                edit.setText(val)
+                
     def get_metadata(self):
         """Returns a dict of all metadata values (user-entered + file info)."""
         data = {}
@@ -158,6 +175,8 @@ class LeftPanel(QWidget):
 
     def set_file_info(self, filename="", frame="", fps=""):
         self.file_fields["Filename"].setText(filename)
+        self.file_fields["Filename"].setToolTip(filename)  # ← ajouter
+        self.file_fields["Filename"].home(False)            # ← repositionne au début
         self.file_fields["Frame"].setText(frame)
         self.file_fields["FPS"].setText(fps)
 

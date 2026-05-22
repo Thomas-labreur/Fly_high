@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsRectItem
 )
 from PyQt6.QtGui import QPen
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPoint
 
 
 class ImageView(QGraphicsView):
@@ -16,6 +16,7 @@ class ImageView(QGraphicsView):
         self.parent = None
         self.last_line = None
         self.zoom_factor = 1.15
+        self._pan_start = None
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
 
@@ -29,6 +30,11 @@ class ImageView(QGraphicsView):
 
     def mousePressEvent(self, event):
         pos = self.mapToScene(event.pos())
+        if self.mode == "nav":
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._pan_start = event.pos()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
         if self.mode in ["ground", "scale"]:
             self.start_point = pos
             if self.last_line:
@@ -62,6 +68,13 @@ class ImageView(QGraphicsView):
         
 
     def mouseMoveEvent(self, event):
+        if self.mode == "nav" and self._pan_start is not None:
+            delta = event.pos() - self._pan_start
+            self._pan_start = event.pos()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            return
+
         if self.temp_line:
             pos = self.mapToScene(event.pos())
             self.temp_line.setLine(
@@ -78,6 +91,11 @@ class ImageView(QGraphicsView):
 
 
     def mouseReleaseEvent(self, event):
+        if self.mode == "nav":
+            self._pan_start = None
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            return
+
         if self.temp_line:
             line = self.temp_line.line()
             if self.mode == "ground":
