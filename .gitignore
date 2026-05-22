@@ -1,4 +1,6 @@
 test.py
+segment.py
+geotaxis_fly_analyzer.py
 data/
 build/
 fly_env/
