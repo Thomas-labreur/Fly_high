@@ -1,5 +1,6 @@
 import sys, csv, os, markdown, cv2
 import numpy as np
+import pandas as pd
 from PyQt6.QtWidgets import (
     QMainWindow, QGraphicsScene, QGraphicsLineItem, QGraphicsEllipseItem, 
     QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QTableWidget,
@@ -55,7 +56,7 @@ class MainWindow(QMainWindow):
         self.frozen_rows = [] # liste de dicts {col_index: value} pour les lignes figées
         self.current_video_path = None
         self.current_trial = 0
-        self.processed_frames = []  # liste de dicts {frame: int, label: str}
+        self.image_loaded_since_table_load = False
 
         self.setStyleSheet("""
             QMainWindow {
@@ -101,15 +102,17 @@ class MainWindow(QMainWindow):
         # File menu
         file_btn = QPushButton("File")
         file_menu = QMenu(self)
+        file_menu.addAction("New table", self.new_table)
+        file_menu.addAction("Open table", self.open_table)
         file_menu.addAction("Open image", self.open_image)
         action_video = file_menu.addAction("Open video", self.open_video)
         if not CV2_AVAILABLE:
             action_video.setEnabled(False)
-        self.new_trial_action = file_menu.addAction("Select next trial", self.reopen_video)
+        self.new_trial_action = file_menu.addAction("Navigate video", self.reopen_video)
         self.new_trial_action.setEnabled(False)
+        file_menu.addSeparator()
         self.export_frame_action = file_menu.addAction("Export image as PNG", self.export_frame)
         self.export_frame_action.setEnabled(False)
-        file_menu.addSeparator()
         file_menu.addAction("Export table as CSV", self.export_csv)
         file_btn.setMenu(file_menu)
         toolbar_layout.addWidget(file_btn)
@@ -246,6 +249,7 @@ class MainWindow(QMainWindow):
 
         # --- Left panel ---
         self.left_panel = LeftPanel()
+        self.left_panel.metadata_fields["Trial"].setText("1")
 
         # --- Main content splitter ---
         content_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -304,14 +308,32 @@ class MainWindow(QMainWindow):
             self.tab_table_btn.setStyleSheet(self._tab_active_style)
 
     # ------------------------------------------------------------------ #
-    #  Open image
+    #  Table management
     # ------------------------------------------------------------------ #
-    def open_image(self):
+    def new_table(self):
         if self.table.rowCount() > 0:
             reply = QMessageBox.question(
-                self,
-                "Export before open",
-                "Do you want to export your work before opening a new image?",
+                self, "Save before reset",
+                "Do you want to export the current table before creating a new one?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                self.export_csv()
+        self.table.setRowCount(0)
+        self.image_loaded_since_table_load= False
+        self.left_panel.metadata_fields["Trial"].setText(str(1))
+        for f in self.fly_points:
+            self.scene.removeItem(f["item"])
+        self.fly_points = []
+        self.frozen_rows = []
+
+    def open_table(self):
+        if self.table.rowCount() > 0:
+            reply = QMessageBox.question(
+                self, "Save before reset",
+                "Do you want to export the current table before creating a new one?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
             )
             if reply == QMessageBox.StandardButton.Cancel:
@@ -319,6 +341,60 @@ class MainWindow(QMainWindow):
             elif reply == QMessageBox.StandardButton.Yes:
                 self.export_csv()
 
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open table", "", "Table files (*.csv *.xlsx)"
+        )
+        if not path:
+            return
+
+        try:
+            import pandas as pd
+            df = pd.read_csv(path) if path.endswith(".csv") else pd.read_excel(path)
+            # Vérifier que les colonnes correspondent
+            missing = [c for c in self.ALL_COLUMNS if c not in df.columns]
+            if missing:
+                QMessageBox.critical(self, "Format error",
+                    f"Missing columns: {', '.join(missing)}")
+                return
+            df = df[self.ALL_COLUMNS]  # réordonner
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
+            return
+
+        # Charger dans la table
+        self.table.setRowCount(0)
+        for _, row in df.iterrows():
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            for c, col in enumerate(self.ALL_COLUMNS):
+                val = "" if pd.isna(row[col]) else str(row[col])
+                self.table.setItem(r, c, QTableWidgetItem(val))
+
+        self.frozen_rows = []
+        self._freeze_current_rows()
+        for f in self.fly_points:
+            self.scene.removeItem(f["item"])
+        self.fly_points = []
+        self.image_loaded_since_table_load = False
+
+        # Remplir le panneau gauche avec les métadonnées de la dernière ligne
+        if self.table.rowCount() > 0:
+            last_row = self.table.rowCount() - 1
+            for field in LeftPanel.METADATA_FIELDS:
+                if field in self.ALL_COLUMNS:
+                    col_idx = self.ALL_COLUMNS.index(field)
+                    item = self.table.item(last_row, col_idx)
+                    if item and field != "ROI name":
+                        self.left_panel.metadata_fields[field].setText(item.text())
+                        if field == "Trial":
+                            last_trial = int(item.text()) if item and item.text().isdigit() else 0
+                            self.left_panel.metadata_fields["Trial"].setText(str(last_trial + 1))
+
+    # ------------------------------------------------------------------ #
+    #  Open image
+    # ------------------------------------------------------------------ #
+    def open_image(self):
+        self._increment_trial_if_needed()
         self.clear_scene()
 
         path, _ = QFileDialog.getOpenFileName(
@@ -342,26 +418,16 @@ class MainWindow(QMainWindow):
                                 "Install with : pip install opencv-python")
             return
 
-        if self.table.rowCount() > 0:
-            reply = QMessageBox.question(
-                self,
-                "Export before open",
-                "Do you want to export your work before opening a new image?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
-            )
-            if reply == QMessageBox.StandardButton.Cancel:
-                return
-            elif reply == QMessageBox.StandardButton.Yes:
-                self.export_csv()
-
         path, _ = QFileDialog.getOpenFileName(
             self, "Open video", "", "Videos (*.mp4 *.avi *.mov *.mkv)"
         )
         if not path:
             return
 
-        dialog = VideoFrameSelector(path, self)
+        processed = self._get_processed_frames_for_video(path)
+        dialog = VideoFrameSelector(path, self, processed_frames=processed)
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_pixmap:
+            self._increment_trial_if_needed()
             self.clear_scene()
             self._load_pixmap(dialog.selected_pixmap, from_video=True)
             videoname = os.path.basename(path)
@@ -375,12 +441,9 @@ class MainWindow(QMainWindow):
                 frame=str(frame),
                 fps=f"{dialog.fps:.2f}"
             )
-            # Initialiser le trial à 1 et mémoriser la vidéo
+            # mémoriser la vidéo
             self.current_video_path = path
-            self.current_trial = 1
-            self.left_panel.metadata_fields["Trial"].setText("1")
             self.new_trial_action.setEnabled(True)
-            self.frozen_rows = []
             self.switch_tab(0)
 
     def reopen_video(self):
@@ -388,11 +451,8 @@ class MainWindow(QMainWindow):
             return
     
         # Get previous frame number and save it
-        trial_label = self.left_panel.metadata_fields["Trial"].text().strip()
-        current_frame = int(self.left_panel.file_fields["Frame"].text() or 0)
-        self.processed_frames.append({"frame": current_frame, "label": f"Trial {trial_label}"})
-
-        dialog = VideoFrameSelector(self.current_video_path, self, processed_frames=self.processed_frames)
+        processed = self._get_processed_frames_for_video(self.current_video_path)
+        dialog = VideoFrameSelector(self.current_video_path, self, processed_frames=processed)
 
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_pixmap:
 
@@ -461,18 +521,34 @@ class MainWindow(QMainWindow):
                 frame=str(frame),
                 fps=f"{dialog.fps:.2f}"
             )
-            # Incrémenter le trial
-            try:
-                self.current_trial = int(self.left_panel.metadata_fields["Trial"].text()) + 1
-            except ValueError:
-                self.current_trial += 1
-            self.left_panel.metadata_fields["Trial"].setText(str(self.current_trial))
-
-            self.left_panel.metadata_fields["Trial"].setText(str(self.current_trial))
+            print(self.image_loaded_since_table_load)
+            self._increment_trial_if_needed()
             self.switch_tab(0)
 
-        else:
-            self.processed_frames.pop()
+    def _get_processed_frames_for_video(self, video_path):
+        filename = os.path.basename(video_path)
+        filename_col = self.ALL_COLUMNS.index("Filename")
+        frame_col = self.ALL_COLUMNS.index("Frame")
+        trial_col = self.ALL_COLUMNS.index("Trial")
+
+        seen = set()
+        processed = []
+
+        # Parcourir la table widget
+        for row in range(self.table.rowCount()):
+            item_filename = self.table.item(row, filename_col)
+            if not item_filename or item_filename.text() != filename:
+                continue
+            item_frame = self.table.item(row, frame_col)
+            frame_val = item_frame.text() if item_frame else ""
+            item_trial = self.table.item(row, trial_col)
+            trial_val = item_trial.text() if item_trial else ""
+            if not frame_val or frame_val in seen:
+                continue
+            seen.add(frame_val)
+            processed.append({"frame": int(frame_val), "label": f"Trial {trial_val}"})
+
+        return processed
 
     def _freeze_current_rows(self):
         """Capture toutes les lignes actuelles de la table en frozen_rows."""
@@ -483,6 +559,15 @@ class MainWindow(QMainWindow):
                 item = self.table.item(row, col)
                 row_data[col] = item.text() if item else ""
             self.frozen_rows.append(row_data)
+
+    def _increment_trial_if_needed(self):
+        if self.image_loaded_since_table_load:
+            try:
+                t = int(self.left_panel.metadata_fields["Trial"].text() or 0)
+            except ValueError:
+                t = 0
+            self.left_panel.metadata_fields["Trial"].setText(str(t + 1))
+        self.image_loaded_since_table_load = True
 
     # ------------------------------------------------------------------ #
     #  Load pixmap
@@ -523,7 +608,8 @@ class MainWindow(QMainWindow):
         self.current_video_path = None
         self.current_trial = 0
         self.new_trial_action.setEnabled(False)
-        self.table.setRowCount(0)
+        #self.table.setRowCount(0)
+        self._freeze_current_rows()
         self.left_panel.clear_file_info()
         self.auto_detect_btn.setEnabled(False)
         for mode, info in self.buttons.items():
@@ -612,7 +698,8 @@ class MainWindow(QMainWindow):
                         padding: 3px 6px; font-size: 11px; }
             QLineEdit:focus { border-color: #4169E1; }
         """
-        for field in LeftPanel.METADATA_FIELDS:
+        fields_order = ["ROI name"] + [f for f in LeftPanel.METADATA_FIELDS if f not in ("ROI name", "Trial")]
+        for field in fields_order:
             edit = QLineEdit()
             edit.setStyleSheet(field_style)
             if field == "ROI name":
@@ -648,7 +735,7 @@ class MainWindow(QMainWindow):
         roi_name = fields["ROI name"].text().strip()
 
         # Store all metadata overrides on the ROI item
-        roi_meta = {field: fields[field].text().strip() for field in LeftPanel.METADATA_FIELDS}
+        roi_meta = {f: fields[f].text().strip() for f in LeftPanel.METADATA_FIELDS if f!="Trial"}
 
         roi = QGraphicsRectItem(rect)
         roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
@@ -665,12 +752,29 @@ class MainWindow(QMainWindow):
         label.setPos(rect.x(), rect.y() - label.boundingRect().height())
 
         self.rois.append(roi)
+        for fly in self.fly_points:
+            if roi.rect().contains(fly["pos"]):
+                for field, value in roi_meta.items():
+                    if value:  # seulement si renseigné
+                        fly["snapshot"][field] = value
+                fly["snapshot"]["ROI name"] = roi_name
         self.recalculate_heights()
 
     def remove_roi(self, item):
+        panel_meta = self.left_panel.get_metadata()
+        roi_meta = item.data(1) or {}
+        roi_name = item.data(0) or ""
+        
+        for fly in self.fly_points:
+            if item.rect().contains(fly["pos"]):
+                fly["snapshot"]["ROI name"] = ""
+                for field, value in roi_meta.items():
+                    if value:  # seulement les champs que ce ROI avait renseignés
+                        fly["snapshot"][field] = panel_meta.get(field, "")
+        
         self.scene.removeItem(item)
         self.rois = [roi for roi in self.rois if roi != item]
-        self.recalculate_heights() ## TODO :problem, removes the logical but not hte graphics
+        self.recalculate_heights()
 
     def _get_roi_for_pos(self, pos):
         """Returns a metadata dict for the ROI containing pos, merged with panel values."""
@@ -704,7 +808,10 @@ class MainWindow(QMainWindow):
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
         point.setPen(QPen(Qt.GlobalColor.cyan, 4))
         self.scene.addItem(point)
-        self.fly_points.append({"item": point, "pos": pos, "source": "manual"})
+
+        # Snapshot complet au moment de la création
+        snapshot = self._build_row_snapshot(pos, source="manual")
+        self.fly_points.append({"item": point, "pos": pos, "source": "manual", "snapshot": snapshot})
         self.recalculate_heights()
 
     def remove_fly(self, item):
@@ -714,46 +821,49 @@ class MainWindow(QMainWindow):
 
     def recalculate_heights(self):
         self.table.setRowCount(0)
-        if not self.ground_line or not self.scale_cm_per_px:
-            return
 
         # Restaurer les lignes figées
         for row_data in self.frozen_rows:
             row = self.table.rowCount()
             self.table.insertRow(row)
             for col, value in row_data.items():
-                item = QTableWidgetItem(value)
-                self.table.setItem(row, col, item)
-
-        metadata = self.left_panel.get_metadata()
-
-        metadata = self.left_panel.get_metadata()
+                self.table.setItem(row, col, QTableWidgetItem(value))
 
         for idx, fly in enumerate(self.fly_points):
             pos = fly["pos"]
-            source = fly["source"]
-            height_px = self.point_to_line_distance(pos, self.ground_line)
-            height_cm = height_px * self.scale_cm_per_px
+            snap = fly.get("snapshot", {})
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            col = 0
-            # Metadata columns (user + file info)
-            roi_meta = self._get_roi_for_pos(pos)
-            for field in LeftPanel.METADATA_FIELDS:
-                value = roi_meta.get(field, "")
-                self.table.setItem(row, col, QTableWidgetItem(value))
-                col += 1
-            for field in LeftPanel.FILE_FIELDS:
-                value = metadata.get(field, "")
-                self.table.setItem(row, col, QTableWidgetItem(value))
-                col += 1
-            # Computed columns
-            self.table.setItem(row, col, QTableWidgetItem(str(idx)));      col += 1
-            self.table.setItem(row, col, QTableWidgetItem(f"{pos.x():.2f}")); col += 1
-            self.table.setItem(row, col, QTableWidgetItem(f"{pos.y():.2f}")); col += 1
-            self.table.setItem(row, col, QTableWidgetItem(f"{height_cm:.2f}")); col += 1
-            self.table.setItem(row, col, QTableWidgetItem(f"{source}"))
+            # Colonnes dont la valeur est figée au snapshot
+            frozen_fields = [
+                "Cohort", "Genotype", "Condition", "Age (days)", "Sex",
+                "Assay type", "Trial", "Filename", "Frame", "FPS"
+            ]
+
+            for field in frozen_fields:
+                col_idx = self.ALL_COLUMNS.index(field)
+                self.table.setItem(row, col_idx, QTableWidgetItem(snap.get(field, "")))
+
+            # ROI name
+            roi_col = self.ALL_COLUMNS.index("ROI name")
+            self.table.setItem(row, roi_col, QTableWidgetItem(snap.get("ROI name", "")))
+
+            if self.ground_line and self.scale_cm_per_px:
+                height_px = self.point_to_line_distance(pos, self.ground_line)
+                height_cm = f"{height_px * self.scale_cm_per_px:.2f}"
+            else:
+                height_cm = ""
+
+            # Fly ID, X, Y, Height, Source
+            for field, value in [
+                ("Fly ID",      str(idx)),
+                ("X (px)",      f"{pos.x():.2f}"),
+                ("Y (px)",      f"{pos.y():.2f}"),
+                ("Height (cm)", height_cm),
+                ("Source",      snap.get("Source", fly.get("source", ""))),
+            ]:
+                self.table.setItem(row, self.ALL_COLUMNS.index(field), QTableWidgetItem(value))
 
     def segment_flies_auto(self):
         if not self.rois:
@@ -826,12 +936,37 @@ class MainWindow(QMainWindow):
                 point = QGraphicsEllipseItem(gx - r, gy - r, 2 * r, 2 * r)
                 point.setPen(QPen(Qt.GlobalColor.blue, 4))
                 self.scene.addItem(point)
-                self.fly_points.append({"item": point, "pos": pos, "source": "auto"})
+                snapshot = self._build_row_snapshot(pos, source="auto")
+                self.fly_points.append({"item": point, "pos": pos, 
+                                        "source": "auto", "snapshot": snapshot, 
+                                        "auto": True})
                 count += 1
 
         self.recalculate_heights()
         QMessageBox.information(self, "Detection done",
                                 f"{count} fly(ies) detected automatically.")
+        
+    def _build_row_snapshot(self, pos, source="manual"):
+        """Capture l'état complet d'une ligne au moment de la création du point."""
+        roi_meta = self._get_roi_for_pos(pos)
+        file_meta = self.left_panel.get_metadata()
+        return {
+            # Metadata utilisateur (depuis ROI ou panneau gauche)
+            "Cohort":       roi_meta.get("Cohort", ""),
+            "Genotype":     roi_meta.get("Genotype", ""),
+            "Condition":    roi_meta.get("Condition", ""),
+            "Age (days)":   roi_meta.get("Age (days)", ""),
+            "Sex":          roi_meta.get("Sex", ""),
+            "Assay type":   roi_meta.get("Assay type", ""),
+            "Trial":        roi_meta.get("Trial", ""),
+            "ROI name": roi_meta.get("ROI name", ""),
+            # File info (figé)
+            "Filename":     file_meta.get("Filename", ""),
+            "Frame":        file_meta.get("Frame", ""),
+            "FPS":          file_meta.get("FPS", ""),
+            # Source
+            "Source":       source,
+        }
 
     # ------------------------------------------------------------------ #
     #  Zoom / rotation

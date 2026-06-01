@@ -76,6 +76,16 @@ class LeftPanel(QWidget):
                 border-color: #4169E1;
             }
         """
+        readonly_style = """
+            QLineEdit {
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                padding: 3px 6px;
+                background: #f0f0f0;
+                color: #666;
+                font-size: 11px;
+            }
+        """
         label_style = "font-size: 11px; color: #555; font-weight: normal;"
 
         for field in self.METADATA_FIELDS:
@@ -88,6 +98,9 @@ class LeftPanel(QWidget):
             lbl.setStyleSheet(label_style)
             meta_form.addRow(lbl, edit)
             self.metadata_fields[field] = edit
+            if field == "Trial":
+                edit.setReadOnly(True)
+                edit.setStyleSheet(readonly_style)  
 
 
         inner_layout.addWidget(meta_group)
@@ -114,17 +127,6 @@ class LeftPanel(QWidget):
         file_form = QFormLayout(file_group)
         file_form.setSpacing(6)
         file_form.setContentsMargins(8, 16, 8, 8)
-
-        readonly_style = """
-            QLineEdit {
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                padding: 3px 6px;
-                background: #f0f0f0;
-                color: #666;
-                font-size: 11px;
-            }
-        """
 
         self.file_fields = {}
         for field in self.FILE_FIELDS:

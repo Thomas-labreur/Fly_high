@@ -16,7 +16,15 @@ Si une image est déja ouverte et que vous avez commencé à y faire des mesures
 
 En haut à droite de l'image, un **bouton ↻** permet de faire une rotation à 90° de l'image si nécessaire.
 
-## 2. Définir <span style="color:red">le sol</span> 🌱 et <span style="color:green">l'échelle</span> 📏
+## 2. Metadonnées
+
+Le panneau situé à gauche de l'écran indique des métadonnées.
+
+La première section contient un ensemble d'informations qui doivent être remplies à la main. Le logiciel garde en mémoire les valeurs des champs utilisées lors de sa précédente ouverture et pré-rempli les champs automatiquement avec. Notez que ces métadonnées sont celles **par défaut** pour les mouches qui ne sont pas situées à l'intérieur d'une ROI, ou bien si aucune autre valeur n'a été donnée au moment de la création de la ROI.
+
+La deuxième section indique des informations sur le fichier (image ou vidéo) qui a été chargé, et est uniquement là à titre informatif.
+
+## 3. Définir <span style="color:red">le sol</span> 🌱 et <span style="color:green">l'échelle</span> 📏
 
 Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commencer par dire au logiciel ou se trouve <span style="color:red">**le sol**</span> et quelle est <span style="color:green">**l'échelle**</span> de distance.
 
@@ -24,13 +32,21 @@ Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commenc
 
 - Le bouton <span style="color:green">**Scale**</span> enclenche le <span style="color:green">**mode échelle**</span>. Dans ce mode, en cliquant sur l'image, vous placez le point de départ d'un segment de droite, et en relachant le click, le point d'arrivée. Il faut alors indiquer la longueur de ce segment en *centimètres*. Le segment de l'échelle s'affiche en vert sur l'image.
 
-## 3. Placer <span style="color:blue">les mouches</span> 🪰
+## 4. Définir des <span style="color:magenta">ROI</span> (optionnel)
 
-Le bouton <span style="color:blue">**Fly**</span> enclenche le <span style="color:blue">**mode mouche**</span>. Dans ce mode:
+Le bouton <span style="color:magenta">**ROI**</span> enclenche le <span style="color:magenta">**mode ROI**</span>. Dans ce mode: 
 
-- **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans le tableau situé a gauche de l'image.
+- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire. Le logiciel demande alors d'entrer un nom pour cette région, et il est possible d'écraser les métadonnées par défaut. Celà signifie que, pour toutes les mouches situées **à l'intérieur** de cette région, les métadonnées utilisées pour remplir la table ne seront pas celles du panneau de gauche mais celles définies à ce moment là.
 
-- **Click droit** sur un point déja tracé permet d'effacer ce point et la ligne correspondante dans le tableau.
+- le **click droit** à l'intérieur d'une ROI permet de la supprimer.
+
+## 5. Placer <span style="color:cyan">les mouches</span> 🪰
+
+Le bouton <span style="color:cyan">**Fly**</span> enclenche le <span style="color:cyan">**mode mouche**</span>. Dans ce mode:
+
+- **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans la table.
+
+- **Click droit** sur un point déja tracé permet d'effacer ce point et la ligne correspondante dans la table.
 
 **Remarque:** Il n'est pas possible de placer les points si l'on a pas défini <span style="color:red">**le sol**</span> et <span style="color:green">**l'échelle**</span> avant. Cela déclenchera un message d'erreur.
 
@@ -40,13 +56,29 @@ Le tableau renseigne diverses informations sur le point que vous venez de placer
 
 - **Height (cm):** La distance en *centimètres* entre le point et <span style="color:red">**le sol**</span> selon <span style="color:green">**l'échelle**</span> donnée;
 
-- **Group:** Cette colonne est facultative, elle permet de donner un groupe aux mouches, par exemple, le nom du tube dans lequel se trouve la mouche. Par défaut ce nom est "Tube 1" mais si vous souhaitez changer, il faut utiliser le **bouton Tube** pour entrer le nouveau nom **avant** de cliquer sur le point (le bouton indique quel est le nom actuel);
-
 - **X position (px)** et **Y position (px):** Les coordonnées en *pixels* du point sur l'image.
 
-A tout moment, il est possible de repasser en <span style="color:red">**mode sol**</span> ou en <span style="color:green">**mode échelle**</span> pour redéfinir l'un ou l'autre. Le logiciel **recalculera** alors toutes les hauteurs de tous les points déja placés.
+- Ainsi que toutes les métadonnées visible dans le panneau de gauche (ou définies à la création des ROI).
 
-Il est aussi possible de **renomer les colonnes** de la table en double cliquant dessus.
+## 5. Auto-détection des mouches
+
+Le bouton **Automatic Detection** permet de détecter automatiquement toutes les mouches situées dans les ROI actuellement définies. Elles apparaissent alors comme des <span style="color:blue">**cercles bleus**</span> plus foncés que les mouches placées manuellement, et la colonne "source" de la table indique si la mouche a été annotée automatiquement ou manuellement.
+
+Ces mouches peuvent êtres effacées en <span style="color:cyan">**mode mouche**</span> comme les autres, avec le **click droit**.
+
+La détection automatique fonctionne par seuillage et suppose que les mouches sont des points **sombres** sur un fond **clair**.
+
+## 6. Mises à jour de la table
+
+A tout moment, il est possible de repasser en <span style="color:red">**mode sol**</span>, en <span style="color:green">**mode échelle**</span> pour redéfinir l'un ou l'autre. Le logiciel **recalculera** alors toutes les hauteurs de tous les points déja placés.
+
+On peut également repasser en <span style="color:magenta">**mode ROI**</span> pour ajouter ou supprimer des ROI. Si des mouches étaient présentes dans une ROI supprimée, alors les lignes correspondantes prennent les métadonnées par défaut (définies dans le panneau de gauche). De même, si une ROI est ajoutée et que des mouches se trouvent déja à l'intérieur, les lignes correspondantent se mettent à jour avec les métadonnées de la nouvelle ROI.
+
+## 7. Navigation dans la vidéo.
+
+Parfois un fichier vidéo contient plusieurs éssais (trials). On peut donc ré-ouvrir la vidéo à l'aide du bouton **Select Next Trial** du menu **File**. Si on le fait, les mouches précédentes disparaissent de l'image mais restent dans la table et deviennent **figées**. Elles ne peuvent plus être recalculées, la seule façon de les modifier est manuellement, en cliquant sur la case de la table.
+
+Rien n'empêche alors de créer de nouveaux ROI, redéfinir l'échelle, le sol ou changer les métadonnées sans que celà n'impacte les données des trials précédents.
 
 ## 4. Enregistrer son travail 📝
 
