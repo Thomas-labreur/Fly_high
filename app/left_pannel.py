@@ -1,15 +1,15 @@
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QWidget,  QLineEdit, QFrame,
-    QScrollArea, QFormLayout, QGroupBox, QLabel
+    QVBoxLayout, QWidget,  QLineEdit, QFrame, 
+    QScrollArea, QFormLayout, QGroupBox, QLabel, QComboBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QIntValidator
 
 class LeftPanel(QWidget):
     """Left panel with metadata fields and file info (read-only)."""
 
     # Fields the user fills in manually
-    METADATA_FIELDS = ["Cohort", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Trial", "ROI name"]
+    METADATA_FIELDS = ["Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Trial", "ROI name"]
     # Fields filled automatically from the loaded file
     FILE_FIELDS = ["Filename", "Frame", "FPS"]
 
@@ -89,18 +89,29 @@ class LeftPanel(QWidget):
         label_style = "font-size: 11px; color: #555; font-weight: normal;"
 
         for field in self.METADATA_FIELDS:
-            edit = QLineEdit()
-            edit.setPlaceholderText(f"{field}…")
-            edit.setStyleSheet(field_style)
-            if field in ("Trial", "Age (days)"):
-                edit.setValidator(QIntValidator())
-            lbl = QLabel(field)
-            lbl.setStyleSheet(label_style)
-            meta_form.addRow(lbl, edit)
-            self.metadata_fields[field] = edit
-            if field == "Trial":
-                edit.setReadOnly(True)
-                edit.setStyleSheet(readonly_style)  
+
+            if field == "Assay mode":
+                combo = QComboBox()
+                combo.addItems(["group tubes", "single flies"])
+                combo.setStyleSheet("font-size: 11px;")
+                lbl = QLabel(field)
+                lbl.setStyleSheet(label_style)
+                meta_form.addRow(lbl, combo)
+                self.metadata_fields[field] = combo
+            
+            else:
+                edit = QLineEdit()
+                edit.setPlaceholderText(f"{field}…")
+                edit.setStyleSheet(field_style)
+                if field in ("Trial", "Age (days)"):
+                    edit.setValidator(QIntValidator())
+                lbl = QLabel(field)
+                lbl.setStyleSheet(label_style)
+                meta_form.addRow(lbl, edit)
+                self.metadata_fields[field] = edit
+                if field == "Trial":
+                    edit.setReadOnly(True)
+                    edit.setStyleSheet(readonly_style)  
 
 
         inner_layout.addWidget(meta_group)
@@ -150,27 +161,31 @@ class LeftPanel(QWidget):
 
         self._load_settings()
         for field, edit in self.metadata_fields.items():
-            if field != "Trial":
+            if field not in ["Trial", "Assay mode"]:
                 edit.textChanged.connect(lambda text, f=field: self._save_field(f, text))
+            elif field=="Assay mode":
+                edit.currentTextChanged.connect(lambda text, f=field: self._save_field(f, text))
 
     def _save_field(self, field, value):
-        from PyQt6.QtCore import QSettings
         s = QSettings("Config", "Flheight")
         s.setValue(f"metadata/{field}", value)
 
     def _load_settings(self):
-        from PyQt6.QtCore import QSettings
         s = QSettings("Config", "Flheight")
         for field, edit in self.metadata_fields.items():
-            if field != "Trial":
+            if field not in ["Trial", "Assay mode"]:
                 val = s.value(f"metadata/{field}", "")
                 edit.setText(val)
-                
+            elif field == "Assay mode":
+                val = s.value(f"metadata/{field}", "")
+                edit.setCurrentText(val)
+            
     def get_metadata(self):
         """Returns a dict of all metadata values (user-entered + file info)."""
         data = {}
-        for field, edit in self.metadata_fields.items():
-            data[field] = edit.text()
+        for field, widget in self.metadata_fields.items():
+            from PyQt6.QtWidgets import QComboBox
+            data[field] = widget.currentText() if isinstance(widget, QComboBox) else widget.text()
         for field, edit in self.file_fields.items():
             data[field] = edit.text()
         return data

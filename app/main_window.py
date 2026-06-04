@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, QSettings, QPointF
 from video_frame_selector import VideoFrameSelector, CV2_AVAILABLE
 from image_view import ImageView
 from left_pannel import LeftPanel
+from data_processor import DataProcessor
 
 def resource_path(relative_path):
     try:
@@ -27,11 +28,11 @@ class MainWindow(QMainWindow):
     # All column names in final table order
     ALL_COLUMNS = [
         # Metadata (user)
-        "Cohort", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Trial", "ROI name",
+        "Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Trial", "ROI name",
         # File info (auto)
         "Filename", "Frame", "FPS",
         # Computed
-        "Fly ID", "X (px)", "Y (px)", "Height (cm)", "Source"
+        "Point ID", "Fly ID", "X (px)", "Y (px)", "Height (cm)", "Source"
     ]
 
     def __init__(self):
@@ -42,6 +43,7 @@ class MainWindow(QMainWindow):
 
         self.scene = QGraphicsScene()
         self.view = ImageView(self.scene)
+        self.data_processor = DataProcessor()
         self.view.parent = self
 
         self.ground_line_item = None
@@ -114,6 +116,7 @@ class MainWindow(QMainWindow):
         self.export_frame_action = file_menu.addAction("Export image as PNG", self.export_frame)
         self.export_frame_action.setEnabled(False)
         file_menu.addAction("Export table as CSV", self.export_csv)
+        file_menu.addAction("Export figure-ready as XLSX", self.export_xlsx)
         file_btn.setMenu(file_menu)
         toolbar_layout.addWidget(file_btn)
 
@@ -384,11 +387,14 @@ class MainWindow(QMainWindow):
                 if field in self.ALL_COLUMNS:
                     col_idx = self.ALL_COLUMNS.index(field)
                     item = self.table.item(last_row, col_idx)
-                    if item and field != "ROI name":
+                    if item and field not in ["ROI name", "Trial", "Assay mode"]:
                         self.left_panel.metadata_fields[field].setText(item.text())
-                        if field == "Trial":
+                    elif field == "Trial":
                             last_trial = int(item.text()) if item and item.text().isdigit() else 0
                             self.left_panel.metadata_fields["Trial"].setText(str(last_trial + 1))
+                    elif field == "Assay_mode":
+                        self.left_panel.metada_fields["Assay mode"].setCurrentText(item.text())
+                    
 
     # ------------------------------------------------------------------ #
     #  Open image
@@ -698,7 +704,7 @@ class MainWindow(QMainWindow):
                         padding: 3px 6px; font-size: 11px; }
             QLineEdit:focus { border-color: #4169E1; }
         """
-        fields_order = ["ROI name"] + [f for f in LeftPanel.METADATA_FIELDS if f not in ("ROI name", "Trial")]
+        fields_order = ["ROI name"] + [f for f in LeftPanel.METADATA_FIELDS if f not in ("ROI name", "Trial", "Assay mode")]
         for field in fields_order:
             edit = QLineEdit()
             edit.setStyleSheet(field_style)
@@ -735,7 +741,10 @@ class MainWindow(QMainWindow):
         roi_name = fields["ROI name"].text().strip()
 
         # Store all metadata overrides on the ROI item
-        roi_meta = {f: fields[f].text().strip() for f in LeftPanel.METADATA_FIELDS if f!="Trial"}
+        roi_meta = {}
+        for f in fields_order:
+            widget = fields[f]
+            roi_meta[f] = widget.text().strip()
 
         roi = QGraphicsRectItem(rect)
         roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
@@ -777,16 +786,16 @@ class MainWindow(QMainWindow):
         self.recalculate_heights()
 
     def _get_roi_for_pos(self, pos):
-        """Returns a metadata dict for the ROI containing pos, merged with panel values."""
         panel_meta = self.left_panel.get_metadata()
         for roi in self.rois:
             if roi.rect().contains(pos):
                 roi_meta = roi.data(1) or {}
-                # ROI values override panel values, blank ROI values fall back to panel
-                return {
+                result = {
                     field: roi_meta.get(field) or panel_meta.get(field, "")
                     for field in LeftPanel.METADATA_FIELDS
                 }
+                result["Assay mode"] = panel_meta.get("Assay mode", "")
+                return result  # ← retourner ici
         return panel_meta
 
 
@@ -803,14 +812,21 @@ class MainWindow(QMainWindow):
             msg.exec()
             return
 
-        r = 0.005 * min(self.image_width, self.image_height) if hasattr(self, "image_width") else 4
+        # Demander le Fly ID si mode "single flies"
+        fly_id_user = ""
+        assay_mode = self.left_panel.get_metadata().get("Assay mode", "")
+        if assay_mode == "single flies":
+            fly_id_user = self._ask_fly_id()
+            if fly_id_user is None:  # annulé
+                return
 
+        r = 0.005 * min(self.image_width, self.image_height) if hasattr(self, "image_width") else 4
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
         point.setPen(QPen(Qt.GlobalColor.cyan, 4))
         self.scene.addItem(point)
 
-        # Snapshot complet au moment de la création
         snapshot = self._build_row_snapshot(pos, source="manual")
+        snapshot["Fly ID"] = fly_id_user
         self.fly_points.append({"item": point, "pos": pos, "source": "manual", "snapshot": snapshot})
         self.recalculate_heights()
 
@@ -818,6 +834,43 @@ class MainWindow(QMainWindow):
         self.scene.removeItem(item)
         self.fly_points = [f for f in self.fly_points if f["item"] != item]
         self.recalculate_heights()
+
+    def _ask_fly_id(self):
+        """Dialog pour choisir ou créer un Fly ID."""
+        from PyQt6.QtWidgets import QComboBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialogButtonBox
+
+        # Collecter les Fly ID déjà présents dans la table
+        fly_id_col = self.ALL_COLUMNS.index("Fly ID")
+        existing_ids = []
+        seen = set()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, fly_id_col)
+            if item and item.text().strip() and item.text().strip() not in seen:
+                existing_ids.append(item.text().strip())
+                seen.add(item.text().strip())
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Fly ID")
+        layout = QVBoxLayout(dialog)
+
+        layout.addWidget(QLabel("Select an existing Fly ID or type a new one:"))
+
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.addItems(existing_ids)
+        combo.setCurrentText("")  # champ vide par défaut
+        combo.lineEdit().setPlaceholderText("e.g. fly_01")
+        layout.addWidget(combo)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        return combo.currentText().strip()
 
     def recalculate_heights(self):
         self.table.setRowCount(0)
@@ -837,8 +890,8 @@ class MainWindow(QMainWindow):
 
             # Colonnes dont la valeur est figée au snapshot
             frozen_fields = [
-                "Cohort", "Genotype", "Condition", "Age (days)", "Sex",
-                "Assay type", "Trial", "Filename", "Frame", "FPS"
+                "Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", 
+                "Sex", "Assay type", "Trial", "Filename", "Frame", "FPS"
             ]
 
             for field in frozen_fields:
@@ -857,7 +910,8 @@ class MainWindow(QMainWindow):
 
             # Fly ID, X, Y, Height, Source
             for field, value in [
-                ("Fly ID",      str(idx)),
+                ("Point ID",    str(idx)),
+                ("Fly ID",      snap.get("Fly ID", "")),  # user input
                 ("X (px)",      f"{pos.x():.2f}"),
                 ("Y (px)",      f"{pos.y():.2f}"),
                 ("Height (cm)", height_cm),
@@ -937,6 +991,7 @@ class MainWindow(QMainWindow):
                 point.setPen(QPen(Qt.GlobalColor.blue, 4))
                 self.scene.addItem(point)
                 snapshot = self._build_row_snapshot(pos, source="auto")
+                snapshot["Assay mode"] = "group tubes"
                 self.fly_points.append({"item": point, "pos": pos, 
                                         "source": "auto", "snapshot": snapshot, 
                                         "auto": True})
@@ -953,6 +1008,7 @@ class MainWindow(QMainWindow):
         return {
             # Metadata utilisateur (depuis ROI ou panneau gauche)
             "Cohort":       roi_meta.get("Cohort", ""),
+            "Assay mode":   roi_meta.get("Assay mode", ""),
             "Genotype":     roi_meta.get("Genotype", ""),
             "Condition":    roi_meta.get("Condition", ""),
             "Age (days)":   roi_meta.get("Age (days)", ""),
@@ -965,6 +1021,7 @@ class MainWindow(QMainWindow):
             "Frame":        file_meta.get("Frame", ""),
             "FPS":          file_meta.get("FPS", ""),
             # Source
+            "Fly ID":       "",
             "Source":       source,
         }
 
@@ -1043,3 +1100,22 @@ class MainWindow(QMainWindow):
         d = B - A
         p = A - P
         return np.abs(d[0] * p[1] - d[1] * p[0]) / np.linalg.norm(d)
+    
+    def export_xlsx(self):
+        if self.table.rowCount() == 0:
+            QMessageBox.warning(self, "Empty table", "No data to export.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export XLSX", getattr(self, "default_export_name", ""), "Excel files (*.xlsx)"
+        )
+        if not path:
+            return
+        try:
+            sheets = self.data_processor.all_sheets(self.table, self.ALL_COLUMNS)
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                for sheet_name, df in sheets.items():
+                    if df is not None and not df.empty:
+                        df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+            QMessageBox.information(self, "Export done", f"Exported {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export error", str(e))

@@ -1,6 +1,6 @@
 # Bienvenue dans Flheight 🪰
 
-Flheight est un logiciel initialement développé pour compter et mesurer la hauteur atteinte par des mouches dans des tubes sur une image dans le cadre d'expériences en biologie. Il peut cependant être utilisé avec tout type d'image si l'on souhaite mesurer la distance entre une droite (le sol) et des points sur une image.
+Flheight est un logiciel initialement développé pour compter et mesurer la hauteur atteinte par des mouches dans des tubes sur une image dans le cadre d'expériences en biologie. Il permet de sortir une table de mesures, ainsi qu'un ensemble feuilles excel nécessaires à faire certaines figures.
 
 ## 1 Ouvrir une image 📁
 
@@ -12,15 +12,20 @@ Le menu **File** vous permet d'ouvrir une image de deux façons:
 
 L'image apparaît à droite de la fenêtre principale et le titre du fichier s'affiche au dessus. Si l'image vient d'une vidéo, le **framerate** de la vidéo ainsi que le **numéro de la frame et son timecode** s'affichent également.
 
-Si une image est déja ouverte et que vous avez commencé à y faire des mesures, le logiciel vous proposera **d'exporter** ces mesures au *format CSV* (voir section 4.) avant d'en ouvrir une nouvelle, et vous pouvez alors accepter, refuser ou annuler votre action.
-
 En haut à droite de l'image, un **bouton ↻** permet de faire une rotation à 90° de l'image si nécessaire.
+
+Le menu **File** permet également d'ouvrir une table, afin d'y ajouter vos nouvelles données, ou bien de créer une nouvelle table vierge (choix par défaut à l'ouverture de l'application). Lorsqu'une table est ouverte, toutes les lignes des trials précédents sont gelées (elles ne seront plus affectées par des création / suppression de ROI mais peuvent uniquement être modifiées manuellement par double click sur une cellule).
 
 ## 2. Metadonnées
 
 Le panneau situé à gauche de l'écran indique des métadonnées.
 
-La première section contient un ensemble d'informations qui doivent être remplies à la main. Le logiciel garde en mémoire les valeurs des champs utilisées lors de sa précédente ouverture et pré-rempli les champs automatiquement avec. Notez que ces métadonnées sont celles **par défaut** pour les mouches qui ne sont pas situées à l'intérieur d'une ROI, ou bien si aucune autre valeur n'a été donnée au moment de la création de la ROI.
+La première section contient un ensemble d'informations qui doivent être remplies à la main. Le logiciel garde en mémoire les valeurs des champs utilisées lors de sa précédente ouverture. Notez que ces métadonnées sont celles **par défaut** pour les mouches qui ne sont pas situées à l'intérieur d'une ROI, ou bien pour celles qui sont dans une ROI qui n'a pas de métadonnées associées.
+
+Le champ "Assay mode" modifie légèrement le fonctionnement de l'application. Dans l'idée, le mode **single fly** est là pour analyser une mouche par tube et la suivre dans le temps en lui attribuant un identifiant, et le mode **group tubes** permet d'analyser plusieurs mouches par tubes sans suivi de chaque individu.
+
+Il existe un champ "Trial". Un trial correspond à 1 image. A chaque changement d'image, le trial s'incrémente. Il revient à 1 si une nouvelle table est créée.
+
 
 La deuxième section indique des informations sur le fichier (image ou vidéo) qui a été chargé, et est uniquement là à titre informatif.
 
@@ -36,15 +41,15 @@ Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commenc
 
 Le bouton <span style="color:magenta">**ROI**</span> enclenche le <span style="color:magenta">**mode ROI**</span>. Dans ce mode: 
 
-- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire. Le logiciel demande alors d'entrer un nom pour cette région, et il est possible d'écraser les métadonnées par défaut. Celà signifie que, pour toutes les mouches situées **à l'intérieur** de cette région, les métadonnées utilisées pour remplir la table ne seront pas celles du panneau de gauche mais celles définies à ce moment là.
+- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire, les ROI. Le logiciel demande alors d'entrer un nom pour cette région, et il est possible d'écraser les métadonnées par défaut. Celà signifie que, pour toutes les mouches situées **à l'intérieur** de cette région, les métadonnées utilisées pour remplir la table ne seront pas celles du panneau de gauche mais celles définies à ce moment là.
 
-- le **click droit** à l'intérieur d'une ROI permet de la supprimer.
+- le **click droit** à l'intérieur d'une ROI permet de la supprimer. A ce moment là les mouches qui étaient à l'intérieur voient leur métadonnées modifiées, elles prennent celles du panneau de gauche au moment de la supression.
 
 ## 5. Placer <span style="color:cyan">les mouches</span> 🪰
 
 Le bouton <span style="color:cyan">**Fly**</span> enclenche le <span style="color:cyan">**mode mouche**</span>. Dans ce mode:
 
-- **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans la table.
+- **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans la table. En mode **singlefly**, il faut également donner un identifiant à la mouche
 
 - **Click droit** sur un point déja tracé permet d'effacer ce point et la ligne correspondante dans la table.
 
@@ -52,7 +57,9 @@ Le bouton <span style="color:cyan">**Fly**</span> enclenche le <span style="colo
 
 Le tableau renseigne diverses informations sur le point que vous venez de placer:
 
-- **ID:** Un idendifiant unique pour chaque point;
+- **Point ID:** Un idendifiant unique pour chaque point;
+
+- **Fly ID:** Pour les **single flies**, permet d'identifier une même mouche présentes sur plusieurs images.
 
 - **Height (cm):** La distance en *centimètres* entre le point et <span style="color:red">**le sol**</span> selon <span style="color:green">**l'échelle**</span> donnée;
 
@@ -62,7 +69,7 @@ Le tableau renseigne diverses informations sur le point que vous venez de placer
 
 ## 5. Auto-détection des mouches
 
-Le bouton **Automatic Detection** permet de détecter automatiquement toutes les mouches situées dans les ROI actuellement définies. Elles apparaissent alors comme des <span style="color:blue">**cercles bleus**</span> plus foncés que les mouches placées manuellement, et la colonne "source" de la table indique si la mouche a été annotée automatiquement ou manuellement.
+Le bouton **Automatic Detection** permet de détecter automatiquement toutes les mouches situées dans les ROI actuellement définies. Elles apparaissent alors comme des <span style="color:blue">**cercles bleus**</span> plus foncés que les mouches placées manuellement, et la colonne "source" de la table indique si la mouche a été annotée automatiquement ou manuellement. Les mouches détectées ainsi ne peuvent être qu'en mode **group tubes**
 
 Ces mouches peuvent êtres effacées en <span style="color:cyan">**mode mouche**</span> comme les autres, avec le **click droit**.
 
@@ -82,6 +89,32 @@ Rien n'empêche alors de créer de nouveaux ROI, redéfinir l'échelle, le sol o
 
 ## 4. Enregistrer son travail 📝
 
-Lorsque tous vos points sont placés et que vous êtes satisfait du résultat, il ne vous reste qu'à cliquer sur le bouton **Export table as CSV** situé dans le menu **File** pour enregistrer ce dernier. Sélectionnez un emplacement sur votre machine et entrez un nom pour ce fichier afin de l'enregistrer au *format CSV*.
+L'image analysée peut être enregistrée au *format PNG*, via le bouton **Export image as PNG** du menu **File**. Son nom par défaut contient les informations affichées au dessus de l'image dans l'application.
 
-L'image analysée peut aussi être enregistrée au *format PNG*, via le bouton **Export image as PNG**. Son nom par défaut contient les informations affichées au dessus de l'image dans l'application.
+Lorsque tous vos points sont placés et que vous êtes satisfait du résultat, vous ppuvez cliquer sur le bouton **Export table as CSV** situé dans le menu **File** pour enregistrer ce dernier. Sélectionnez un emplacement sur votre machine et entrez un nom pour ce fichier afin de l'enregistrer au *format CSV*.
+
+Le bouton ***Export figure-ready as XLSX** permet de générer un fichier excel contenant différentes feuilles construites à partir de la table, pensées pour générer des figures facilement via excel. La liste de ces feuilles est la suivantes:
+
+- **raw_data**: la table telle que dans le logiciel;
+
+- **tube_by_trial**: une ligne par ROI par trial, avec des mesures statistiques sur la hauteur;
+
+- **single_trial_values:** une ligne par trial pour les single flies uniquement;
+
+- **single_fly_by_age**: une ligne par mouche par age (comme single_trial_values mais en réunissant les trials ou une mouche a le même âge) pour les single flies uniquement;
+
+- **single trajectories:** une ligne par mouche, une colonne par age, permet de voir l'évolution de chaque mouche, pour les single flies uniquement;
+
+- **qc_trials_per_fly:** single_fly_by_age en retirant les colonnes de mesures de hauteur, pour se concentrer sur les comptages et évaluer la quelité des échantillons, pour les single flies uniquement;
+
+- **figure_points_long:** simple tri des lignes des données brutes, en rangeant par Age et ROI;
+
+- **figure_points_wide:** une colonne par age contenant toutes lesmesures de hauteurs des mouches de cet age, sans ordre particulier, pour faire des boxplots;
+
+- **figure_dispersion:** une ligne par age avec des mesures statistiques de la dispersion des hauteurs. La upper;
+
+- **single_boxplot_wide:** comme le figure_points_wide mais uniquement pour les single_flies;
+
+- **single_dispersion:** comme figure_dispersion mais uniquement pour les single_flies.
+
+

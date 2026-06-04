@@ -275,7 +275,7 @@ class VideoFrameSelector(QDialog):
         if ok:
             self.goto_seconds = val
             self.settings.setValue("goto_seconds", val)
-            self.btn_goto.setText(f"+{val:.0f}s")
+            self.btn_goto.setText(f"Jump +{val:.0f}s")
 
 
     def step_frames(self, delta):
