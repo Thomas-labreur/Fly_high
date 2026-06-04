@@ -117,4 +117,4 @@ Le bouton ***Export figure-ready as XLSX** permet de générer un fichier excel 
 
 - **single_dispersion:** comme figure_dispersion mais uniquement pour les single_flies.
 
-
+**Note:** L'**upper dispersion** est l'écart moyen des hauteurs supérieures à la moyenne à celle-ci. C'est donc un écart-type qui ne prend en compte que les valeurs supérieures à la moyenne. Elle est utile quand la distribution est asymétrique, par exemple ici, les hauteurs ne peuvent pas être négatives mais peuvent s'étaler au dessus de la moyenne comme elles le veulent. La différence entre la variabilité de deux groupes (jeunes et vieux par ex) se verra donc nettement mieux dans les grandes hauteurs que dans les petites. Le **relative upper dispersion** est le ratio de l'upper dispersion par la moyenne.

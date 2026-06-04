@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['flheight.py'],
+    ['app\\app.py'],
     pathex=[],
     binaries=[],
-    datas=[('doc.md', '.')],
+    datas=[('app/doc.md', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
