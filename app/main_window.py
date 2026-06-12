@@ -6,9 +6,9 @@ from PyQt6.QtWidgets import (
     QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QTableWidget,
     QGraphicsRectItem, QTableWidgetItem, QInputDialog, QToolButton, QMessageBox,
     QDialog, QTextBrowser, QSplitter, QLabel, QMenu,  QFrame, QStackedWidget, 
-    QGraphicsTextItem, QLineEdit, QFormLayout, QDialogButtonBox
+    QGraphicsTextItem
 )
-from PyQt6.QtGui import QPixmap, QPen, QFont
+from PyQt6.QtGui import QPixmap, QPen, QFont, QTransform
 from PyQt6.QtCore import Qt, QSettings, QPointF
 
 from video_frame_selector import VideoFrameSelector, CV2_AVAILABLE
@@ -251,7 +251,7 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.stack)
 
         # --- Left panel ---
-        self.left_panel = LeftPanel()
+        self.left_panel = LeftPanel(on_transform_change=self._apply_transform_to_current)
         self.left_panel.metadata_fields["Trial"].setText("1")
 
         # --- Main content splitter ---
@@ -267,18 +267,6 @@ class MainWindow(QMainWindow):
         self.image_info_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.image_info_label.setStyleSheet("color: #777; font-size: 10px; padding-right: 6px;")
         self.image_info_label.setFixedHeight(18)
-
-        # --- Rotate button (overlay on image view) ---
-        self.rotate_btn = QToolButton(self.view)
-        self.rotate_btn.setText("↻")
-        self.rotate_btn.setStyleSheet("""
-            background-color: rgba(255,255,255,200);
-            border: 1px solid gray;
-            border-radius: 10px;
-        """)
-        self.rotate_btn.resize(30, 30)
-        self.rotate_btn.clicked.connect(self.rotate_image)
-        self.update_rotate_btn_position()
 
         # --- Root layout ---
         root_layout = QVBoxLayout()
@@ -329,6 +317,8 @@ class MainWindow(QMainWindow):
         self.left_panel.metadata_fields["Trial"].setText(str(1))
         for f in self.fly_points:
             self.scene.removeItem(f["item"])
+            if f.get("label"):
+                self.scene.removeItem(f["label"])
         self.fly_points = []
         self.frozen_rows = []
 
@@ -392,8 +382,8 @@ class MainWindow(QMainWindow):
                     elif field == "Trial":
                             last_trial = int(item.text()) if item and item.text().isdigit() else 0
                             self.left_panel.metadata_fields["Trial"].setText(str(last_trial + 1))
-                    elif field == "Assay_mode":
-                        self.left_panel.metada_fields["Assay mode"].setCurrentText(item.text())
+                    elif field == "Assay mode":
+                        self.left_panel.metadata_fields["Assay mode"].setCurrentText(item.text())
                     
 
     # ------------------------------------------------------------------ #
@@ -407,11 +397,13 @@ class MainWindow(QMainWindow):
             self, "Open image", "", "Images (*.png *.jpg *.jpeg *.bmp)"
         )
         if path:
-            self._load_pixmap(QPixmap(path))
+            pixmap = QPixmap(path)
+            self._load_pixmap(pixmap)
             filename = os.path.basename(path)
             self.image_info_label.setText(filename)
             self.default_export_name = os.path.splitext(filename)[0]
-            self.left_panel.set_file_info(filename=filename, frame="", fps="")
+            resolution = f"{pixmap.height()}×{pixmap.width()} px"
+            self.left_panel.set_file_info(filename=filename, frame="", fps="", resolution=resolution)
             self.switch_tab(0)
 
     # ------------------------------------------------------------------ #
@@ -445,7 +437,9 @@ class MainWindow(QMainWindow):
             self.left_panel.set_file_info(
                 filename=videoname,
                 frame=str(frame),
-                fps=f"{dialog.fps:.2f}"
+                fps=f"{dialog.fps:.2f}",
+                resolution=f"{dialog.selected_pixmap.height()}×{dialog.selected_pixmap.width()} px"
+
             )
             # mémoriser la vidéo
             self.current_video_path = path
@@ -466,7 +460,7 @@ class MainWindow(QMainWindow):
             saved_ground_line = self.ground_line
             saved_scale_line = self.scale_line
             saved_scale_cm_per_px = self.scale_cm_per_px
-            saved_rois = [(roi.rect(), roi.data(0), roi.data(1)) for roi in self.rois]
+            saved_rois = [(roi.rect(), roi.data(0)) for roi in self.rois]
             self.view.resetTransform()
             self._freeze_current_rows()
 
@@ -501,11 +495,10 @@ class MainWindow(QMainWindow):
                 self.scale_cm_per_px = saved_scale_cm_per_px
 
             # Restaurer les ROIs
-            for (rect, roi_name, roi_meta) in saved_rois:
+            for (rect, roi_name) in saved_rois:
                 roi = QGraphicsRectItem(rect)
                 roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
                 roi.setData(0, roi_name)
-                roi.setData(1, roi_meta)
                 self.scene.addItem(roi)
                 label = QGraphicsTextItem(roi_name, roi)
                 label.setDefaultTextColor(Qt.GlobalColor.magenta)
@@ -525,9 +518,9 @@ class MainWindow(QMainWindow):
             self.left_panel.set_file_info(
                 filename=videoname,
                 frame=str(frame),
-                fps=f"{dialog.fps:.2f}"
+                fps=f"{dialog.fps:.2f}",
+                resolution=f"{dialog.selected_pixmap.height()}×{dialog.selected_pixmap.width()} px"
             )
-            print(self.image_loaded_since_table_load)
             self._increment_trial_if_needed()
             self.switch_tab(0)
 
@@ -579,6 +572,23 @@ class MainWindow(QMainWindow):
     #  Load pixmap
     # ------------------------------------------------------------------ #
     def _load_pixmap(self, pixmap: QPixmap, from_video=False):
+
+        # Save previous pixmap (useful for rotation and flip)
+        self.original_pixmap = pixmap
+
+        # Apply flip or rotation if mandatory
+        if self.left_panel.get_flip():
+            pixmap = pixmap.transformed(
+                __import__('PyQt6.QtGui', fromlist=['QTransform']).QTransform().scale(-1, 1)
+            )
+
+        rot = self.left_panel.get_rotation()
+        if rot:
+            pixmap = pixmap.transformed(QTransform().rotate(rot))
+        if self.left_panel.get_flip():
+            pixmap = pixmap.transformed(QTransform().scale(-1, 1))
+
+        # Load pixmap
         self.pixmap_item = self.scene.addPixmap(pixmap)
         self.image_width = pixmap.width()
         self.image_height = pixmap.height()
@@ -592,6 +602,18 @@ class MainWindow(QMainWindow):
         self.set_mode("nav") 
         for mode, info in self.buttons.items():
             info["button"].setEnabled(True)
+
+    def _apply_transform_to_current(self):
+        if not hasattr(self, "original_pixmap"):
+            return
+        pixmap = self.original_pixmap
+        rot = self.left_panel.get_rotation()
+        if rot:
+            pixmap = pixmap.transformed(QTransform().rotate(rot))
+        if self.left_panel.get_flip():
+            pixmap = pixmap.transformed(QTransform().scale(-1, 1))
+        self.pixmap_item.setPixmap(pixmap)
+        self.current_pixmap = pixmap
 
     # ------------------------------------------------------------------ #
     #  Clear scene
@@ -683,120 +705,43 @@ class MainWindow(QMainWindow):
         self.recalculate_heights()
     
     def add_roi(self, rect):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("ROI Properties")
-        dialog.setStyleSheet("width: 100px")
-        layout = QVBoxLayout(dialog)
+        names = self.left_panel.get_name_list("ROI name")
+        used_names = {roi.data(0) for roi in self.rois}
+        available = [n for n in names if n not in used_names]
 
-        info = QLabel(
-            "The <b>ROI name</b> is required. All other fields are optional — "
-            "if left blank, the value from the left panel will be used."
-        )
-        info.setWordWrap(True)
-        info.setStyleSheet("font-size: 11px; color: #555; margin-bottom: 6px")
-        layout.addWidget(info)
-
-        form = QFormLayout()
-        form.setSpacing(6)
-        fields = {}
-        field_style = """
-            QLineEdit { border: 1px solid #ddd; border-radius: 4px;
-                        padding: 3px 6px; font-size: 11px; }
-            QLineEdit:focus { border-color: #4169E1; }
-        """
-        fields_order = ["ROI name"] + [f for f in LeftPanel.METADATA_FIELDS if f not in ("ROI name", "Trial", "Assay mode")]
-        for field in fields_order:
-            edit = QLineEdit()
-            edit.setStyleSheet(field_style)
-            if field == "ROI name":
-                edit.setPlaceholderText("Required")
-            else:
-                edit.setPlaceholderText("Leave blank to use panel value")
-            form.addRow(QLabel(field), edit)
-            fields[field] = edit
-        
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)  # désactivé par défaut
-        fields["ROI name"].textChanged.connect(
-            lambda text: buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(text.strip()))
-        )
-
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-
-        layout.addLayout(form)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        roi_name = fields["ROI name"].text().strip()
-
-        # Store all metadata overrides on the ROI item
-        roi_meta = {}
-        for f in fields_order:
-            widget = fields[f]
-            roi_meta[f] = widget.text().strip()
+        if available:
+            roi_name = available[0]
+        else:
+            roi_name = ""
+            QMessageBox.warning(self, "No more ROI names",
+                "Not enough ROI names in the list. This ROI has no name.")
 
         roi = QGraphicsRectItem(rect)
         roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
         roi.setData(0, roi_name)
-        roi.setData(1, roi_meta)  
         self.scene.addItem(roi)
 
         label = QGraphicsTextItem(roi_name, roi)
         label.setDefaultTextColor(Qt.GlobalColor.magenta)
-        font = QFont()
-        font.setBold(True)
-        font.setPointSize(10)
+        font = QFont(); font.setBold(True); font.setPointSize(16)
         label.setFont(font)
         label.setPos(rect.x(), rect.y() - label.boundingRect().height())
 
         self.rois.append(roi)
         for fly in self.fly_points:
             if roi.rect().contains(fly["pos"]):
-                for field, value in roi_meta.items():
-                    if value:  # seulement si renseigné
-                        fly["snapshot"][field] = value
                 fly["snapshot"]["ROI name"] = roi_name
         self.recalculate_heights()
 
     def remove_roi(self, item):
-        panel_meta = self.left_panel.get_metadata()
-        roi_meta = item.data(1) or {}
-        roi_name = item.data(0) or ""
-        
+        rect = item.rect()
         for fly in self.fly_points:
-            if item.rect().contains(fly["pos"]):
+            if rect.contains(fly["pos"]):
                 fly["snapshot"]["ROI name"] = ""
-                for field, value in roi_meta.items():
-                    if value:  # seulement les champs que ce ROI avait renseignés
-                        fly["snapshot"][field] = panel_meta.get(field, "")
-        
         self.scene.removeItem(item)
         self.rois = [roi for roi in self.rois if roi != item]
         self.recalculate_heights()
 
-    def _get_roi_for_pos(self, pos):
-        panel_meta = self.left_panel.get_metadata()
-        for roi in self.rois:
-            if roi.rect().contains(pos):
-                roi_meta = roi.data(1) or {}
-                result = {
-                    field: roi_meta.get(field) or panel_meta.get(field, "")
-                    for field in LeftPanel.METADATA_FIELDS
-                }
-                result["Assay mode"] = panel_meta.get("Assay mode", "")
-                return result  # ← retourner ici
-        return panel_meta
 
 
     # ------------------------------------------------------------------ #
@@ -812,65 +757,57 @@ class MainWindow(QMainWindow):
             msg.exec()
             return
 
-        # Demander le Fly ID si mode "single flies"
+        # Récupérer le Fly ID si mode "single flies"
         fly_id_user = ""
         assay_mode = self.left_panel.get_metadata().get("Assay mode", "")
+
         if assay_mode == "single flies":
-            fly_id_user = self._ask_fly_id()
-            if fly_id_user is None:  # annulé
-                return
+            names = self.left_panel.get_name_list("Fly ID")
+            used_ids = {f["snapshot"].get("Fly ID") for f in self.fly_points}
+            available = [n for n in names if n not in used_ids]
+
+            if available:
+                fly_id_user = available[0]
+            else:
+                fly_id_user = ""
+                QMessageBox.warning(self, "No more Fly IDs",
+                    "Not enough Fly IDs in the list. This fly has no ID.")
 
         r = 0.005 * min(self.image_width, self.image_height) if hasattr(self, "image_width") else 4
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
-        point.setPen(QPen(Qt.GlobalColor.cyan, 4))
+        point.setPen(QPen(Qt.GlobalColor.cyan, 2))
         self.scene.addItem(point)
+
+        label = None
+        if fly_id_user:
+            label = QGraphicsTextItem(fly_id_user)
+            label.setDefaultTextColor(Qt.GlobalColor.cyan)
+            font = QFont(); font.setBold(True); font.setPointSize(16)
+            label.setFont(font)
+            label.setPos(pos.x() + r + 2, pos.y() - r)
+            self.scene.addItem(label)
 
         snapshot = self._build_row_snapshot(pos, source="manual")
         snapshot["Fly ID"] = fly_id_user
-        self.fly_points.append({"item": point, "pos": pos, "source": "manual", "snapshot": snapshot})
+        self.fly_points.append({
+            "item": point, 
+            "pos": pos, 
+            "label": label,
+            "source": "manual", 
+            "snapshot": snapshot
+        })
         self.recalculate_heights()
 
     def remove_fly(self, item):
+        for f in self.fly_points:
+            if f["item"] == item:
+                if f.get("label"):
+                    self.scene.removeItem(f["label"])
+                break
         self.scene.removeItem(item)
         self.fly_points = [f for f in self.fly_points if f["item"] != item]
         self.recalculate_heights()
 
-    def _ask_fly_id(self):
-        """Dialog pour choisir ou créer un Fly ID."""
-        from PyQt6.QtWidgets import QComboBox, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QDialogButtonBox
-
-        # Collecter les Fly ID déjà présents dans la table
-        fly_id_col = self.ALL_COLUMNS.index("Fly ID")
-        existing_ids = []
-        seen = set()
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, fly_id_col)
-            if item and item.text().strip() and item.text().strip() not in seen:
-                existing_ids.append(item.text().strip())
-                seen.add(item.text().strip())
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Fly ID")
-        layout = QVBoxLayout(dialog)
-
-        layout.addWidget(QLabel("Select an existing Fly ID or type a new one:"))
-
-        combo = QComboBox()
-        combo.setEditable(True)
-        combo.addItems(existing_ids)
-        combo.setCurrentText("")  # champ vide par défaut
-        combo.lineEdit().setPlaceholderText("e.g. fly_01")
-        layout.addWidget(combo)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return None
-
-        return combo.currentText().strip()
 
     def recalculate_heights(self):
         self.table.setRowCount(0)
@@ -941,20 +878,11 @@ class MainWindow(QMainWindow):
         frame_rgb = np.frombuffer(ptr, dtype=np.uint8).reshape((height, width, 3))
         gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
 
-        # Paramètres (tu pourras les exposer dans l'UI plus tard)
-        thr = 80
-        min_area = 10
-        max_area = 500
+        params = self.left_panel.get_detection_params()
+        thr      = params["threshold"]
+        min_area = params["min_area"]
+        max_area = params["max_area"]
         kernel = np.ones((3, 3), np.uint8)
-
-        # Supprimer les détections auto précédentes
-        self.fly_points = [f for f in self.fly_points if not f.get("auto")]
-        # Redessiner pour nettoyer les anciens cercles auto
-        # (on garde les items manuels, on retire les auto)
-        for item in self.scene.items():
-            if isinstance(item, QGraphicsEllipseItem):
-                # Les items auto sont stockés avec un flag, on les retire
-                pass  # géré ci-dessous via fly_points
 
         # Plus simple : retirer du scene tous les ellipses marquées "auto"
         for f in list(self.fly_points):
@@ -988,7 +916,7 @@ class MainWindow(QMainWindow):
 
                 pos = QPointF(gx, gy)
                 point = QGraphicsEllipseItem(gx - r, gy - r, 2 * r, 2 * r)
-                point.setPen(QPen(Qt.GlobalColor.blue, 4))
+                point.setPen(QPen(Qt.GlobalColor.blue, 2))
                 self.scene.addItem(point)
                 snapshot = self._build_row_snapshot(pos, source="auto")
                 snapshot["Assay mode"] = "group tubes"
@@ -1003,44 +931,31 @@ class MainWindow(QMainWindow):
         
     def _build_row_snapshot(self, pos, source="manual"):
         """Capture l'état complet d'une ligne au moment de la création du point."""
-        roi_meta = self._get_roi_for_pos(pos)
-        file_meta = self.left_panel.get_metadata()
+        panel_meta = self.left_panel.get_metadata()
+        roi_name = ""
+        for roi in self.rois:
+            if roi.rect().contains(pos):
+                roi_name = roi.data(0) or ""
+                break
         return {
             # Metadata utilisateur (depuis ROI ou panneau gauche)
-            "Cohort":       roi_meta.get("Cohort", ""),
-            "Assay mode":   roi_meta.get("Assay mode", ""),
-            "Genotype":     roi_meta.get("Genotype", ""),
-            "Condition":    roi_meta.get("Condition", ""),
-            "Age (days)":   roi_meta.get("Age (days)", ""),
-            "Sex":          roi_meta.get("Sex", ""),
-            "Assay type":   roi_meta.get("Assay type", ""),
-            "Trial":        roi_meta.get("Trial", ""),
-            "ROI name": roi_meta.get("ROI name", ""),
+            "Cohort":       panel_meta.get("Cohort", ""),
+            "Assay mode":   panel_meta.get("Assay mode", ""),
+            "Genotype":     panel_meta.get("Genotype", ""),
+            "Condition":    panel_meta.get("Condition", ""),
+            "Age (days)":   panel_meta.get("Age (days)", ""),
+            "Sex":          panel_meta.get("Sex", ""),
+            "Assay type":   panel_meta.get("Assay type", ""),
+            "Trial":        panel_meta.get("Trial", ""),
+            "ROI name":     roi_name,
             # File info (figé)
-            "Filename":     file_meta.get("Filename", ""),
-            "Frame":        file_meta.get("Frame", ""),
-            "FPS":          file_meta.get("FPS", ""),
+            "Filename":     panel_meta.get("Filename", ""),
+            "Frame":        panel_meta.get("Frame", ""),
+            "FPS":          panel_meta.get("FPS", ""),
             # Source
             "Fly ID":       "",
             "Source":       source,
         }
-
-    # ------------------------------------------------------------------ #
-    #  Zoom / rotation
-    # ------------------------------------------------------------------ #
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.update_rotate_btn_position()
-
-    def update_rotate_btn_position(self):
-        margin = 20
-        x = self.view.width() - self.rotate_btn.width() - margin
-        y = margin
-        self.rotate_btn.move(x, y)
-
-    def rotate_image(self):
-        if hasattr(self, "pixmap_item"):
-            self.pixmap_item.setRotation(self.pixmap_item.rotation() + 90)
 
     # ------------------------------------------------------------------ #
     #  Help

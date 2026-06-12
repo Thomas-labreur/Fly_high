@@ -71,33 +71,33 @@ class DataProcessor:
         ).reset_index()
         return out.sort_values([c for c in ["Fly ID", "Age (days)"] if c in out.columns])
 
-    def single_trajectories(self, df):
-        """Wide : une ligne par fly, une colonne par age."""
-        by = self.single_by_fly_age(df)
-        if by.empty:
-            return pd.DataFrame()
-        idx_cols = [c for c in ["Fly ID", "Sex", "Cohort", "Genotype", "Condition"] if c in by.columns]
-        wide = by.pivot_table(index=idx_cols, columns="Age (days)", values="mean_height_cm", aggfunc="mean").reset_index()
-        wide.columns = [f"day_{c}" if c not in idx_cols else c for c in wide.columns]
-        return wide
+    # def single_trajectories(self, df):
+    #     """Wide : une ligne par fly, une colonne par age."""
+    #     by = self.single_by_fly_age(df)
+    #     if by.empty:
+    #         return pd.DataFrame()
+    #     idx_cols = [c for c in ["Fly ID", "Sex", "Cohort", "Genotype", "Condition"] if c in by.columns]
+    #     wide = by.pivot_table(index=idx_cols, columns="Age (days)", values="mean_height_cm", aggfunc="mean").reset_index()
+    #     wide.columns = [f"day_{c}" if c not in idx_cols else c for c in wide.columns]
+    #     return wide
 
-    def qc_trials_per_fly(self, df):
-        """QC : nombre de trials par fly par age."""
-        by = self.single_by_fly_age(df)
-        if by.empty:
-            return pd.DataFrame()
-        cols = [c for c in ["Cohort", "Genotype", "Condition", "Sex", "Fly ID", "Age (days)", "n_trials", "trials_present", "total_detections"] if c in by.columns]
-        return by[cols]
+    # def qc_trials_per_fly(self, df):
+    #     """QC : nombre de trials par fly par age."""
+    #     by = self.single_by_fly_age(df)
+    #     if by.empty:
+    #         return pd.DataFrame()
+    #     cols = [c for c in ["Cohort", "Genotype", "Condition", "Sex", "Fly ID", "Age (days)", "n_trials", "trials_present", "total_detections"] if c in by.columns]
+    #     return by[cols]
 
-    def figure_points_long(self, df):
-        """Toutes les mesures brutes, colonnes utiles seulement."""
-        if df.empty:
-            return pd.DataFrame()
-        keep = [c for c in ["Age (days)", "Height (cm)", "Fly ID", "ROI name", "Trial", "Sex", "Cohort", "Genotype", "Condition", "Assay mode", "Filename", "Frame"] if c in df.columns]
-        return df[keep].copy().sort_values([c for c in ["Age (days)", "Fly ID", "ROI name", "Trial"] if c in df.columns])
+    # def figure_points_long(self, df):
+    #     """Toutes les mesures brutes, colonnes utiles seulement."""
+    #     if df.empty:
+    #         return pd.DataFrame()
+    #     keep = [c for c in ["Age (days)", "Height (cm)", "Fly ID", "ROI name", "Trial", "Sex", "Cohort", "Genotype", "Condition", "Assay mode", "Filename", "Frame"] if c in df.columns]
+    #     return df[keep].copy().sort_values([c for c in ["Age (days)", "Fly ID", "ROI name", "Trial"] if c in df.columns])
 
-    def figure_points_wide(self, df):
-        """Wide : une colonne par age, toutes les hauteurs brutes."""
+    def figure_all_boxplot(self, df):
+        """Boxplot : une colonne par age, toutes les hauteurs brutes."""
         if df.empty or "Age (days)" not in df.columns or "Height (cm)" not in df.columns:
             return pd.DataFrame()
         ages = sorted(df["Age (days)"].dropna().unique(), key=lambda x: float(x) if str(x).replace('.','').isdigit() else x)
@@ -116,7 +116,7 @@ class DataProcessor:
         upper = vals[vals > mean] - mean
         return 0.0 if len(upper) == 0 else float(np.sqrt(np.mean(upper ** 2)))
 
-    def figure_dispersion(self, df):
+    def figure_all_dispersion(self, df):
         """Dispersion des hauteurs brutes par age."""
         if df.empty or "Age (days)" not in df.columns:
             return pd.DataFrame()
@@ -138,8 +138,8 @@ class DataProcessor:
             })
         return pd.DataFrame(rows)
 
-    def single_boxplot_wide(self, df):
-        """Wide : une colonne par age, une ligne par fly (moyenne des trials)."""
+    def figure_single_boxplot(self, df):
+        """Boxplot : une colonne par age, une ligne par fly (moyenne des trials)."""
         by = self.single_by_fly_age(df)
         if by.empty:
             return pd.DataFrame()
@@ -151,26 +151,26 @@ class DataProcessor:
             max_len = max(max_len, len(vals))
         return pd.DataFrame({k: v.reindex(range(max_len)) for k, v in cols.items()})
 
-    def single_dispersion(self, df):
+    def figure_single_dispersion(self, df):
         """Dispersion des moyennes par fly par age."""
         by = self.single_by_fly_age(df)
         if by.empty:
             return pd.DataFrame()
         tmp = by.rename(columns={"mean_height_cm": "Height (cm)"})
-        return self.figure_dispersion(tmp)
+        return self.figure_all_dispersion(tmp)
 
     def all_sheets(self, table_widget, all_columns) -> dict:
         df = self.table_to_df(table_widget, all_columns)
         return {
             "raw_data":            df,
-            "tube_by_trial":       self.tube_by_trial(df),
-            "single_trial_values": self.single_trial_values(df),
-            "single_by_fly_age":   self.single_by_fly_age(df),
-            "single_trajectories": self.single_trajectories(df),
-            "qc_trials_per_fly":   self.qc_trials_per_fly(df),
-            "figure_points_long":  self.figure_points_long(df),
-            "figure_points_wide":  self.figure_points_wide(df),
-            "figure_dispersion":   self.figure_dispersion(df),
-            "single_boxplot_wide": self.single_boxplot_wide(df),
-            "single_dispersion":   self.single_dispersion(df),
+            #"tube_by_trial":       self.tube_by_trial(df),
+            #"single_trial_values": self.single_trial_values(df),
+            #"single_by_fly_age":   self.single_by_fly_age(df),
+            #"single_trajectories": self.single_trajectories(df),
+            #"qc_trials_per_fly":   self.qc_trials_per_fly(df),
+            #"figure_points_long":  self.figure_points_long(df),
+            "FIG_all_boxplot":  self.figure_all_boxplot(df),
+            "FIG_all_dispersion":   self.figure_all_dispersion(df),
+            "FIG_single_boxplot": self.figure_single_boxplot(df),
+            "FIG_single_dispersion":   self.figure_single_dispersion(df),
         }

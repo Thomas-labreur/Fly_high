@@ -12,7 +12,7 @@ Le menu **File** vous permet d'ouvrir une image de deux façons:
 
 L'image apparaît à droite de la fenêtre principale et le titre du fichier s'affiche au dessus. Si l'image vient d'une vidéo, le **framerate** de la vidéo ainsi que le **numéro de la frame et son timecode** s'affichent également.
 
-En haut à droite de l'image, un **bouton ↻** permet de faire une rotation à 90° de l'image si nécessaire.
+Sur le panneau de Gauche, il existe une section **Image transform** permettant d'effectuer des rotations de 90°, ou bien un flip horizontal de l'image si nécessaire.
 
 Le menu **File** permet également d'ouvrir une table, afin d'y ajouter vos nouvelles données, ou bien de créer une nouvelle table vierge (choix par défaut à l'ouverture de l'application). Lorsqu'une table est ouverte, toutes les lignes des trials précédents sont gelées (elles ne seront plus affectées par des création / suppression de ROI mais peuvent uniquement être modifiées manuellement par double click sur une cellule).
 
@@ -20,12 +20,11 @@ Le menu **File** permet également d'ouvrir une table, afin d'y ajouter vos nouv
 
 Le panneau situé à gauche de l'écran indique des métadonnées.
 
-La première section contient un ensemble d'informations qui doivent être remplies à la main. Le logiciel garde en mémoire les valeurs des champs utilisées lors de sa précédente ouverture. Notez que ces métadonnées sont celles **par défaut** pour les mouches qui ne sont pas situées à l'intérieur d'une ROI, ou bien pour celles qui sont dans une ROI qui n'a pas de métadonnées associées.
+La première section contient un ensemble d'informations qui doivent être remplies à la main. Le logiciel garde en mémoire les valeurs des champs utilisées lors de sa précédente ouverture.
 
-Le champ "Assay mode" modifie légèrement le fonctionnement de l'application. Dans l'idée, le mode **single fly** est là pour analyser une mouche par tube et la suivre dans le temps en lui attribuant un identifiant, et le mode **group tubes** permet d'analyser plusieurs mouches par tubes sans suivi de chaque individu.
+Le champ "Assay mode" modifie légèrement le fonctionnement de l'application. Dans l'idée, le mode **single fly** est là pour analyser une mouche par tube et la suivre dans le temps en lui attribuant un identifiant, et le mode **group tubes** permet d'analyser plusieurs mouches par tubes sans suivi de chaque individu. En single fly, il faut donc remplir le champ **Fly ID** avec une liste d'identifiant à attribuer à chaque mouche dessinée dans ce mode, dans l'ordre.
 
 Il existe un champ "Trial". Un trial correspond à 1 image. A chaque changement d'image, le trial s'incrémente. Il revient à 1 si une nouvelle table est créée.
-
 
 La deuxième section indique des informations sur le fichier (image ou vidéo) qui a été chargé, et est uniquement là à titre informatif.
 
@@ -41,9 +40,9 @@ Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commenc
 
 Le bouton <span style="color:magenta">**ROI**</span> enclenche le <span style="color:magenta">**mode ROI**</span>. Dans ce mode: 
 
-- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire, les ROI. Le logiciel demande alors d'entrer un nom pour cette région, et il est possible d'écraser les métadonnées par défaut. Celà signifie que, pour toutes les mouches situées **à l'intérieur** de cette région, les métadonnées utilisées pour remplir la table ne seront pas celles du panneau de gauche mais celles définies à ce moment là.
+- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire, les ROI. La section **ROI name** du panneau de gauche permet de rentrer un nom pour chaque ROI, séparés par des virgules (à faire AVANT de tracer la ROI). Quand une ROI est créé, les mouches situées à l'intérieur avant ou apres cette création, auront leur colonne "ROI name" remplie avec ce nom.
 
-- le **click droit** à l'intérieur d'une ROI permet de la supprimer. A ce moment là les mouches qui étaient à l'intérieur voient leur métadonnées modifiées, elles prennent celles du panneau de gauche au moment de la supression.
+- le **click droit** à l'intérieur d'une ROI permet de la supprimer. A ce moment là les mouches qui étaient à l'intérieur voient leur ROI name redevenir vide.
 
 ## 5. Placer <span style="color:cyan">les mouches</span> 🪰
 
@@ -73,7 +72,7 @@ Le bouton **Automatic Detection** permet de détecter automatiquement toutes les
 
 Ces mouches peuvent êtres effacées en <span style="color:cyan">**mode mouche**</span> comme les autres, avec le **click droit**.
 
-La détection automatique fonctionne par seuillage et suppose que les mouches sont des points **sombres** sur un fond **clair**.
+La détection automatique fonctionne par seuillage et suppose que les mouches sont des points **sombres** sur un fond **clair**. Dans le panneau de gauche, la section **Auto-detection** permet d'ajuster le seuil d'intensité lumineuse qui délimite les mouches du fond, ainsi que la taille min et max des mouches (aide quand les mouches sont collées les unes aux autres)
 
 ## 6. Mises à jour de la table
 
@@ -97,24 +96,12 @@ Le bouton ***Export figure-ready as XLSX** permet de générer un fichier excel 
 
 - **raw_data**: la table telle que dans le logiciel;
 
-- **tube_by_trial**: une ligne par ROI par trial, avec des mesures statistiques sur la hauteur;
+- **FIG_all_boxplot:** une colonne par age contenant toutes lesmesures de hauteurs des mouches de cet age, sans ordre particulier, pour faire des boxplots;
 
-- **single_trial_values:** une ligne par trial pour les single flies uniquement;
+- **FIG_all_dispersion:** une ligne par age avec des mesures statistiques de la dispersion des hauteurs, dont la upper_dispersion (voire ci-dessous).
 
-- **single_fly_by_age**: une ligne par mouche par age (comme single_trial_values mais en réunissant les trials ou une mouche a le même âge) pour les single flies uniquement;
+- **FIG_single_boxplot:** comme le figure_points_wide mais uniquement pour les single_flies;
 
-- **single trajectories:** une ligne par mouche, une colonne par age, permet de voir l'évolution de chaque mouche, pour les single flies uniquement;
-
-- **qc_trials_per_fly:** single_fly_by_age en retirant les colonnes de mesures de hauteur, pour se concentrer sur les comptages et évaluer la quelité des échantillons, pour les single flies uniquement;
-
-- **figure_points_long:** simple tri des lignes des données brutes, en rangeant par Age et ROI;
-
-- **figure_points_wide:** une colonne par age contenant toutes lesmesures de hauteurs des mouches de cet age, sans ordre particulier, pour faire des boxplots;
-
-- **figure_dispersion:** une ligne par age avec des mesures statistiques de la dispersion des hauteurs. La upper;
-
-- **single_boxplot_wide:** comme le figure_points_wide mais uniquement pour les single_flies;
-
-- **single_dispersion:** comme figure_dispersion mais uniquement pour les single_flies.
+- **FIG_single_dispersion:** comme figure_dispersion mais uniquement pour les single_flies.
 
 **Note:** L'**upper dispersion** est l'écart moyen des hauteurs supérieures à la moyenne à celle-ci. C'est donc un écart-type qui ne prend en compte que les valeurs supérieures à la moyenne. Elle est utile quand la distribution est asymétrique, par exemple ici, les hauteurs ne peuvent pas être négatives mais peuvent s'étaler au dessus de la moyenne comme elles le veulent. La différence entre la variabilité de deux groupes (jeunes et vieux par ex) se verra donc nettement mieux dans les grandes hauteurs que dans les petites. Le **relative upper dispersion** est le ratio de l'upper dispersion par la moyenne.
