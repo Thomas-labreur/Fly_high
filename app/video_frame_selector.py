@@ -11,12 +11,12 @@ try:
 except ImportError:
     CV2_AVAILABLE = False
 
-class TrialSlider(QWidget):
+class   ImageSlider(QWidget):
     def __init__(self, total_frames, processed_frames, parent=None):
         super().__init__(parent)
         self.total_frames = total_frames
         self.processed_frames = processed_frames
-        self.setMinimumHeight(44)
+        self.setMinimumHeight(50)
 
         self.slider = QSlider(Qt.Orientation.Horizontal, self)
         self.slider.setMinimum(0)
@@ -100,7 +100,7 @@ class VideoFrameSelector(QDialog):
         info_layout.addWidget(self.fps_label)
         layout.addLayout(info_layout)
 
-        self.slider_container = TrialSlider(self.total_frames, self.processed_frames, self)
+        self.slider_container = ImageSlider(self.total_frames, self.processed_frames, self)
         self.slider = self.slider_container.slider
         layout.addWidget(self.slider_container)
         self.slider.valueChanged.connect(self.on_slider_changed)

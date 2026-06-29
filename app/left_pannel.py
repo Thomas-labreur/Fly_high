@@ -10,11 +10,12 @@ class LeftPanel(QWidget):
     """Left panel with metadata fields and file info (read-only)."""
 
     # Fields the user fills in manually
-    METADATA_FIELDS = ["Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Trial", "ROI name", "Fly ID"]
+    METADATA_FIELDS = ["Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Image ID", "Trial", "ROI name", "Fly ID"]
     # Fields filled automatically from the loaded file
     FILE_FIELDS = ["Filename", "Frame", "FPS", "Resolution"]
 
-    def __init__(self, parent=None, on_transform_change=None):
+    def __init__(self, parent=None, on_transform_change=None, on_metadata_change=None):
+        self._on_metadata_change = on_metadata_change
         self._on_transform_change = on_transform_change
         super().__init__(parent)
         self.setFixedWidth(220)
@@ -100,13 +101,13 @@ class LeftPanel(QWidget):
                     f = field.split(" ")[0]
                     edit.setPlaceholderText(f+"_1, "+f+"_2, ...")
                 edit.setStyleSheet(field_style)
-                if field in ("Trial", "Age (days)"):
+                if field in ("Image ID", "Trial", "Age (days)"):
                     edit.setValidator(QIntValidator())
                 lbl = QLabel(field)
                 lbl.setStyleSheet(label_style)
                 meta_form.addRow(lbl, edit)
                 self.metadata_fields[field] = edit
-                if field == "Trial":
+                if field == "Image ID":
                     edit.setReadOnly(True)
                     edit.setStyleSheet(readonly_style)  
 
@@ -252,10 +253,15 @@ class LeftPanel(QWidget):
 
         self._load_settings()
         for field, edit in self.metadata_fields.items():
-            if field not in ["Trial", "Assay mode"]:
-                edit.textChanged.connect(lambda text, f=field: self._save_field(f, text))
-            elif field=="Assay mode":
-                edit.currentTextChanged.connect(lambda text, f=field: self._save_field(f, text))
+            if field not in ["Image ID", "Assay mode"]:
+                edit.textChanged.connect(lambda text, f=field: self._on_field_changed(f, text))
+            elif field == "Assay mode":
+                edit.currentTextChanged.connect(lambda text, f=field: self._on_field_changed(f, text))
+
+    def _on_field_changed(self, field, value):
+        self._save_field(field, value)
+        if self._on_metadata_change:
+            self._on_metadata_change(field, value)
 
     def _save_field(self, field, value):
         s = QSettings("Config", "Flheight")
@@ -264,7 +270,7 @@ class LeftPanel(QWidget):
     def _load_settings(self):
         s = QSettings("Config", "Flheight")
         for field, edit in self.metadata_fields.items():
-            if field not in ["Trial", "Assay mode"]:
+            if field not in ["Image ID", "Assay mode"]:
                 val = s.value(f"metadata/{field}", "")
                 edit.setText(val)
             elif field == "Assay mode":

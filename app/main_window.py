@@ -21,6 +21,7 @@ def resource_path(relative_path):
         base_path = sys._MEIPASS
     except AttributeError:
         base_path = os.path.abspath(".")
+        print(base_path)
     return os.path.join(base_path, relative_path)
 
 class MainWindow(QMainWindow):
@@ -28,7 +29,7 @@ class MainWindow(QMainWindow):
     # All column names in final table order
     ALL_COLUMNS = [
         # Metadata (user)
-        "Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Trial", "ROI name",
+        "Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", "Sex", "Assay type", "Image ID", "Trial", "ROI name",
         # File info (auto)
         "Filename", "Frame", "FPS",
         # Computed
@@ -39,13 +40,16 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Flheight")
 
+        # Settings imported
         self.settings = QSettings("Config", "Flheight")
-
+        
+        # Init scene, image view and data exporter
         self.scene = QGraphicsScene()
         self.view = ImageView(self.scene)
         self.data_processor = DataProcessor()
         self.view.parent = self
 
+        # Init parameters
         self.ground_line_item = None
         self.scale_line_item = None
         self.ground_line = None
@@ -55,9 +59,9 @@ class MainWindow(QMainWindow):
         self.fly_points = []
         self.rois = []
         
-        self.frozen_rows = [] # liste de dicts {col_index: value} pour les lignes figées
+        self.frozen_rows = [] # list of dicts {col_index: value} for frozen rows
         self.current_video_path = None
-        self.current_trial = 0
+        self.current_image_id = 0
         self.image_loaded_since_table_load = False
 
         self.setStyleSheet("""
@@ -110,8 +114,8 @@ class MainWindow(QMainWindow):
         action_video = file_menu.addAction("Open video", self.open_video)
         if not CV2_AVAILABLE:
             action_video.setEnabled(False)
-        self.new_trial_action = file_menu.addAction("Navigate video", self.reopen_video)
-        self.new_trial_action.setEnabled(False)
+        self.new_image_action = file_menu.addAction("Navigate video", self.reopen_video)
+        self.new_image_action.setEnabled(False)
         file_menu.addSeparator()
         self.export_frame_action = file_menu.addAction("Export image as PNG", self.export_frame)
         self.export_frame_action.setEnabled(False)
@@ -147,19 +151,26 @@ class MainWindow(QMainWindow):
         sep_auto.setStyleSheet("color: #ccc;")
         toolbar_layout.addWidget(sep_auto)
 
+        # Automatic detection button
         self.auto_detect_btn = QPushButton("Automatic detection")
         self.auto_detect_btn.clicked.connect(self.segment_flies_auto)
         self.auto_detect_btn.setEnabled(False)
         toolbar_layout.addWidget(self.auto_detect_btn)
 
+        # Delete all flies button
+        self.delete_all_btn = QPushButton("Delete all flies")
+        self.delete_all_btn.clicked.connect(self.delete_all_flies)
+        self.delete_all_btn.setEnabled(False)
+        toolbar_layout.addWidget(self.delete_all_btn)
+
+        # Separator
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.VLine)
         sep2.setStyleSheet("color: #ccc;")
         toolbar_layout.addWidget(sep2)
 
-        toolbar_layout.addStretch()
-
         # Help button
+        toolbar_layout.addStretch()
         help_btn = QPushButton("Help")
         help_btn.clicked.connect(self.show_help)
         toolbar_layout.addWidget(help_btn)
@@ -251,8 +262,11 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.stack)
 
         # --- Left panel ---
-        self.left_panel = LeftPanel(on_transform_change=self._apply_transform_to_current)
-        self.left_panel.metadata_fields["Trial"].setText("1")
+        self.left_panel = LeftPanel(
+            on_transform_change=self._apply_transform_to_current,
+            on_metadata_change=self._on_metadata_changed
+        )
+        self.left_panel.metadata_fields["Image ID"].setText("1")
 
         # --- Main content splitter ---
         content_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -314,7 +328,7 @@ class MainWindow(QMainWindow):
                 self.export_csv()
         self.table.setRowCount(0)
         self.image_loaded_since_table_load= False
-        self.left_panel.metadata_fields["Trial"].setText(str(1))
+        self.left_panel.metadata_fields["Image ID"].setText(str(1))
         for f in self.fly_points:
             self.scene.removeItem(f["item"])
             if f.get("label"):
@@ -377,11 +391,11 @@ class MainWindow(QMainWindow):
                 if field in self.ALL_COLUMNS:
                     col_idx = self.ALL_COLUMNS.index(field)
                     item = self.table.item(last_row, col_idx)
-                    if item and field not in ["ROI name", "Trial", "Assay mode"]:
+                    if item and field not in ["ROI name", "Image ID", "Assay mode"]:
                         self.left_panel.metadata_fields[field].setText(item.text())
-                    elif field == "Trial":
-                            last_trial = int(item.text()) if item and item.text().isdigit() else 0
-                            self.left_panel.metadata_fields["Trial"].setText(str(last_trial + 1))
+                    elif field == "Image ID":
+                            last_image_id = int(item.text()) if item and item.text().isdigit() else 0
+                            self.left_panel.metadata_fields["Image ID"].setText(str(last_image_id + 1))
                     elif field == "Assay mode":
                         self.left_panel.metadata_fields["Assay mode"].setCurrentText(item.text())
                     
@@ -390,7 +404,7 @@ class MainWindow(QMainWindow):
     #  Open image
     # ------------------------------------------------------------------ #
     def open_image(self):
-        self._increment_trial_if_needed()
+        self._increment_image_id_if_needed()
         self.clear_scene()
 
         path, _ = QFileDialog.getOpenFileName(
@@ -425,7 +439,7 @@ class MainWindow(QMainWindow):
         processed = self._get_processed_frames_for_video(path)
         dialog = VideoFrameSelector(path, self, processed_frames=processed)
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_pixmap:
-            self._increment_trial_if_needed()
+            self._increment_image_id_if_needed()
             self.clear_scene()
             self._load_pixmap(dialog.selected_pixmap, from_video=True)
             videoname = os.path.basename(path)
@@ -443,7 +457,7 @@ class MainWindow(QMainWindow):
             )
             # mémoriser la vidéo
             self.current_video_path = path
-            self.new_trial_action.setEnabled(True)
+            self.new_image_action.setEnabled(True)
             self.switch_tab(0)
 
     def reopen_video(self):
@@ -521,14 +535,14 @@ class MainWindow(QMainWindow):
                 fps=f"{dialog.fps:.2f}",
                 resolution=f"{dialog.selected_pixmap.height()}×{dialog.selected_pixmap.width()} px"
             )
-            self._increment_trial_if_needed()
+            self._increment_image_id_if_needed()
             self.switch_tab(0)
 
     def _get_processed_frames_for_video(self, video_path):
         filename = os.path.basename(video_path)
         filename_col = self.ALL_COLUMNS.index("Filename")
         frame_col = self.ALL_COLUMNS.index("Frame")
-        trial_col = self.ALL_COLUMNS.index("Trial")
+        image_id_col = self.ALL_COLUMNS.index("Image ID")
 
         seen = set()
         processed = []
@@ -540,12 +554,12 @@ class MainWindow(QMainWindow):
                 continue
             item_frame = self.table.item(row, frame_col)
             frame_val = item_frame.text() if item_frame else ""
-            item_trial = self.table.item(row, trial_col)
-            trial_val = item_trial.text() if item_trial else ""
+            item_image_id = self.table.item(row, image_id_col)
+            image_id_val = item_image_id.text() if item_image_id else ""
             if not frame_val or frame_val in seen:
                 continue
             seen.add(frame_val)
-            processed.append({"frame": int(frame_val), "label": f"Trial {trial_val}"})
+            processed.append({"frame": int(frame_val), "label": f"Image {image_id_val}"})
 
         return processed
 
@@ -559,13 +573,21 @@ class MainWindow(QMainWindow):
                 row_data[col] = item.text() if item else ""
             self.frozen_rows.append(row_data)
 
-    def _increment_trial_if_needed(self):
+    def _increment_image_id_if_needed(self):
+        """
+        Increment image ID and trial by 1. Used whenever a new image is loaded. 
+        This increment does not occur if this is the first image loaded since the table was.
+        """
         if self.image_loaded_since_table_load:
             try:
+                id = int(self.left_panel.metadata_fields["Image ID"].text() or 0)
                 t = int(self.left_panel.metadata_fields["Trial"].text() or 0)
             except ValueError:
+                id = 0
                 t = 0
+            self.left_panel.metadata_fields["Image ID"].setText(str(id + 1))
             self.left_panel.metadata_fields["Trial"].setText(str(t + 1))
+
         self.image_loaded_since_table_load = True
 
     # ------------------------------------------------------------------ #
@@ -615,6 +637,18 @@ class MainWindow(QMainWindow):
         self.pixmap_item.setPixmap(pixmap)
         self.current_pixmap = pixmap
 
+    def _on_metadata_changed(self, field, value):
+        if field == "ROI name":
+            self._reassign_roi_names()
+        elif field == "Fly ID":
+            self._reassign_fly_ids()
+        else:
+            # Mettre à jour le snapshot de toutes les mouches non-frozen
+            for fly in self.fly_points:
+                if field in fly["snapshot"]:
+                    fly["snapshot"][field] = value
+            self.recalculate_heights()
+
     # ------------------------------------------------------------------ #
     #  Clear scene
     # ------------------------------------------------------------------ #
@@ -634,8 +668,8 @@ class MainWindow(QMainWindow):
         self.rois = []
         self.frozen_rows = []
         self.current_video_path = None
-        self.current_trial = 0
-        self.new_trial_action.setEnabled(False)
+        self.current_image_id = 0
+        self.new_image_action.setEnabled(False)
         #self.table.setRowCount(0)
         self._freeze_current_rows()
         self.left_panel.clear_file_info()
@@ -707,14 +741,7 @@ class MainWindow(QMainWindow):
     def add_roi(self, rect):
         names = self.left_panel.get_name_list("ROI name")
         used_names = {roi.data(0) for roi in self.rois}
-        available = [n for n in names if n not in used_names]
-
-        if available:
-            roi_name = available[0]
-        else:
-            roi_name = ""
-            QMessageBox.warning(self, "No more ROI names",
-                "Not enough ROI names in the list. This ROI has no name.")
+        roi_name = next((n for n in names if n not in used_names), "")
 
         roi = QGraphicsRectItem(rect)
         roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
@@ -742,6 +769,23 @@ class MainWindow(QMainWindow):
         self.rois = [roi for roi in self.rois if roi != item]
         self.recalculate_heights()
 
+    def _reassign_roi_names(self):
+        names = self.left_panel.get_name_list("ROI name")
+        for i, roi in enumerate(self.rois):
+            new_name = names[i] if i < len(names) else ""
+            old_name = roi.data(0)
+            roi.setData(0, new_name)
+            # Mettre à jour le label graphique
+            for child in roi.childItems():
+                if isinstance(child, QGraphicsTextItem):
+                    child.setPlainText(new_name)
+                    break
+            # Mettre à jour les mouches à l'intérieur
+            for fly in self.fly_points:
+                if roi.rect().contains(fly["pos"]):
+                    fly["snapshot"]["ROI name"] = new_name
+        self.recalculate_heights()
+
 
 
     # ------------------------------------------------------------------ #
@@ -758,20 +802,10 @@ class MainWindow(QMainWindow):
             return
 
         # Récupérer le Fly ID si mode "single flies"
-        fly_id_user = ""
         assay_mode = self.left_panel.get_metadata().get("Assay mode", "")
-
-        if assay_mode == "single flies":
-            names = self.left_panel.get_name_list("Fly ID")
-            used_ids = {f["snapshot"].get("Fly ID") for f in self.fly_points}
-            available = [n for n in names if n not in used_ids]
-
-            if available:
-                fly_id_user = available[0]
-            else:
-                fly_id_user = ""
-                QMessageBox.warning(self, "No more Fly IDs",
-                    "Not enough Fly IDs in the list. This fly has no ID.")
+        names = self.left_panel.get_name_list("Fly ID")
+        used_ids = {f["snapshot"].get("Fly ID") for f in self.fly_points}
+        fly_id_user = next((n for n in names if n not in used_ids), "") if assay_mode == "single flies" else ""
 
         r = 0.005 * min(self.image_width, self.image_height) if hasattr(self, "image_width") else 4
         point = QGraphicsEllipseItem(pos.x()-r, pos.y()-r, 2*r, 2*r)
@@ -797,6 +831,7 @@ class MainWindow(QMainWindow):
             "snapshot": snapshot
         })
         self.recalculate_heights()
+        self.delete_all_btn.setEnabled(True)
 
     def remove_fly(self, item):
         for f in self.fly_points:
@@ -807,7 +842,43 @@ class MainWindow(QMainWindow):
         self.scene.removeItem(item)
         self.fly_points = [f for f in self.fly_points if f["item"] != item]
         self.recalculate_heights()
+        self.delete_all_btn.setEnabled(len(self.fly_points)>0)
 
+    def delete_all_flies(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Delete flies")
+        msg.setText("Which fly points do you want to remove?")
+        btn_all = msg.addButton("Delete all flies", QMessageBox.ButtonRole.DestructiveRole)
+        btn_auto = msg.addButton("Delete auto-detected only", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(btn_cancel)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == btn_cancel:
+            return
+
+        to_remove = [f for f in self.fly_points if clicked == btn_all or f.get("auto")]
+
+        for f in to_remove:
+            self.scene.removeItem(f["item"])
+            if f.get("label"):
+                self.scene.removeItem(f["label"])
+
+        self.fly_points = [f for f in self.fly_points if f not in to_remove]
+        self.recalculate_heights()
+        self.delete_all_btn.setEnabled(len(self.fly_points) > 0)
+
+    def _reassign_fly_ids(self):
+        names = self.left_panel.get_name_list("Fly ID")
+        single_flies = [f for f in self.fly_points if f["snapshot"].get("Assay mode") == "single flies"]
+        for i, fly in enumerate(single_flies):
+            new_id = names[i] if i < len(names) else ""
+            fly["snapshot"]["Fly ID"] = new_id
+            # Mettre à jour le label graphique
+            if fly.get("label"):
+                fly["label"].setPlainText(new_id)
+        self.recalculate_heights()
 
     def recalculate_heights(self):
         self.table.setRowCount(0)
@@ -828,7 +899,7 @@ class MainWindow(QMainWindow):
             # Colonnes dont la valeur est figée au snapshot
             frozen_fields = [
                 "Cohort", "Assay mode", "Genotype", "Condition", "Age (days)", 
-                "Sex", "Assay type", "Trial", "Filename", "Frame", "FPS"
+                "Sex", "Assay type", "Image ID", "Trial", "Filename", "Frame", "FPS"
             ]
 
             for field in frozen_fields:
@@ -884,7 +955,7 @@ class MainWindow(QMainWindow):
         max_area = params["max_area"]
         kernel = np.ones((3, 3), np.uint8)
 
-        # Plus simple : retirer du scene tous les ellipses marquées "auto"
+        # Rretirer du scene tous les ellipses marquées "auto"
         for f in list(self.fly_points):
             if f.get("auto"):
                 self.scene.removeItem(f["item"])
@@ -926,6 +997,7 @@ class MainWindow(QMainWindow):
                 count += 1
 
         self.recalculate_heights()
+        self.delete_all_btn.setEnabled(len(self.fly_points)>0)
         QMessageBox.information(self, "Detection done",
                                 f"{count} fly(ies) detected automatically.")
         
@@ -946,6 +1018,7 @@ class MainWindow(QMainWindow):
             "Age (days)":   panel_meta.get("Age (days)", ""),
             "Sex":          panel_meta.get("Sex", ""),
             "Assay type":   panel_meta.get("Assay type", ""),
+            "Image ID":     panel_meta.get("Image ID", ""),
             "Trial":        panel_meta.get("Trial", ""),
             "ROI name":     roi_name,
             # File info (figé)

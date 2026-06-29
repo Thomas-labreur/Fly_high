@@ -10,7 +10,9 @@ Le menu **File** vous permet d'ouvrir une image de deux façons:
 
 2. Le bouton **Open video** permet de sélectionner une vidéo au format MP4 stockée sur votre machine. Une fenêtre s'ouvre alors vous permettant de choisir une frame de la vidéo à analyser.
 
-L'image apparaît à droite de la fenêtre principale et le titre du fichier s'affiche au dessus. Si l'image vient d'une vidéo, le **framerate** de la vidéo ainsi que le **numéro de la frame et son timecode** s'affichent également.
+L'image apparaît à droite de la fenêtre principale. La molette de la souris permet à tout moment de zoomer sur l'image. Le **titre du fichier** s'affiche dans le panneau de gauche. Si l'image vient d'une vidéo, le **framerate** de la vidéo ainsi que le **numéro de la frame et son timecode** s'affichent également.
+
+**Remarque:** Si une image était déja ouverte dans le logiciel, elle est fermée et est remplacée par la nouvelle.
 
 Sur le panneau de Gauche, il existe une section **Image transform** permettant d'effectuer des rotations de 90°, ou bien un flip horizontal de l'image si nécessaire.
 
@@ -18,41 +20,53 @@ Le menu **File** permet également d'ouvrir une table, afin d'y ajouter vos nouv
 
 ## 2. Metadonnées
 
-Le panneau situé à gauche de l'écran indique des métadonnées.
+Le panneau situé à gauche de l'écran indique des métadonnées qui seront utilisées pour remplir la table.
 
 La première section contient un ensemble d'informations qui doivent être remplies à la main. Le logiciel garde en mémoire les valeurs des champs utilisées lors de sa précédente ouverture.
 
 Le champ "Assay mode" modifie légèrement le fonctionnement de l'application. Dans l'idée, le mode **single fly** est là pour analyser une mouche par tube et la suivre dans le temps en lui attribuant un identifiant, et le mode **group tubes** permet d'analyser plusieurs mouches par tubes sans suivi de chaque individu. En single fly, il faut donc remplir le champ **Fly ID** avec une liste d'identifiant à attribuer à chaque mouche dessinée dans ce mode, dans l'ordre.
 
-Il existe un champ "Trial". Un trial correspond à 1 image. A chaque changement d'image, le trial s'incrémente. Il revient à 1 si une nouvelle table est créée.
+Toute modification de ces champs modifie également les valeurs correspondantes dans la table, pour toutes les mouches de l'image en cours.
+
+Il existe un champ "Image ID" qui donne un identifiant unique a chaque image. A chaque changement d'image, l'image ID s'incrémente. Il revient à 1 si une nouvelle table est créée.
 
 La deuxième section indique des informations sur le fichier (image ou vidéo) qui a été chargé, et est uniquement là à titre informatif.
 
-## 3. Définir <span style="color:red">le sol</span> 🌱 et <span style="color:green">l'échelle</span> 📏
+## 3. Les modes
 
-Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commencer par dire au logiciel ou se trouve <span style="color:red">**le sol**</span> et quelle est <span style="color:green">**l'échelle**</span> de distance.
+Le logiciel peut être dans différents modes, ayant chacun un bouton associé à côté du menu **File**: <span style="color: #747474">Nav</span>, <span style="color:red">Ground</span>, <span style="color: #03c945">Scale</span>, <span style="color:magenta">ROI</span> et <span style="color: #03caca">Fly</span>. Chacun de ces boutons permet d'entrer dans un de ces modes, ce qui modifie la fonctionnalité de la souris.
 
-- Le bouton <span style="color:red">**Ground**</span> enclenche le <span style="color:red">**mode sol**</span>. Dans ce mode, en cliquant sur l'image, vous placez le point de départ d'un segment de droite, et en relachant le click, le point d'arrivée. Le segment du sol s'affiche alors en rouge sur l'image.
+### 3.1 <span style="color: #747474">Nav</span> ✥
 
-- Le bouton <span style="color:green">**Scale**</span> enclenche le <span style="color:green">**mode échelle**</span>. Dans ce mode, en cliquant sur l'image, vous placez le point de départ d'un segment de droite, et en relachant le click, le point d'arrivée. Il faut alors indiquer la longueur de ce segment en *centimètres*. Le segment de l'échelle s'affiche en vert sur l'image.
+Dans ce mode, le click droit de la souris permet de se déplacer sur l'image si celle-ci a été zoomée (via la molette de la souris).
 
-## 4. Définir des <span style="color:magenta">ROI</span> (optionnel)
+### 3.2 <span style="color:red">Ground</span> 🌱 et <span style="color: #03c945">Scale</span> 📏
 
-Le bouton <span style="color:magenta">**ROI**</span> enclenche le <span style="color:magenta">**mode ROI**</span>. Dans ce mode: 
+Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commencer par dire au logiciel ou se trouve <span style="color:red">**le sol**</span> et quelle est <span style="color: #03c945">**l'échelle**</span> de distance.
+
+- Dans le mode <span style="color:red">**Ground**</span>, en cliquant sur l'image, vous placez le point de départ d'un segment de droite, et en relachant le click, le point d'arrivée. Le segment du sol s'affiche alors en rouge sur l'image.
+
+- Dans le mode <span style="color: #03c945">**Scale**</span> en cliquant sur l'image, vous placez le point de départ d'un segment de droite, et en relachant le click, le point d'arrivée. Il faut alors indiquer la longueur de ce segment en *centimètres*. Le segment de l'échelle s'affiche en vert sur l'image.
+
+### 3.3 <span style="color:magenta">ROI ⌷</span> (optionnel)
+
+Dans le mode <span style="color:magenta">ROI</span>: 
 
 - le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire, les ROI. La section **ROI name** du panneau de gauche permet de rentrer un nom pour chaque ROI, séparés par des virgules (à faire AVANT de tracer la ROI). Quand une ROI est créé, les mouches situées à l'intérieur avant ou apres cette création, auront leur colonne "ROI name" remplie avec ce nom.
 
 - le **click droit** à l'intérieur d'une ROI permet de la supprimer. A ce moment là les mouches qui étaient à l'intérieur voient leur ROI name redevenir vide.
 
-## 5. Placer <span style="color:cyan">les mouches</span> 🪰
+**Attention au renommage !** Si vous décidez de renommer les ROI dans le panneau de metadonnées, les noms seront réattribués **dans l'ordre où les ROI ont été dessinées**. Si les nouveaux noms sont: "ROI1, ROI2" alors la 1ère ROI dessinée recevra le nom "ROI1", la seconde "ROI2" est les autres n'auront pas de nom. 
 
-Le bouton <span style="color:cyan">**Fly**</span> enclenche le <span style="color:cyan">**mode mouche**</span>. Dans ce mode:
+## 3.4 <span style="color: #03caca">Fly</span> 🪰
+
+Dans le mode <span style="color: #03caca">Fly</span>:
 
 - **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans la table. En mode **singlefly**, il faut également donner un identifiant à la mouche
 
-- **Click droit** sur un point déja tracé permet d'effacer ce point et la ligne correspondante dans la table.
+- **Click droit** sur un point déja tracé permet d'effacer ce point et la ligne correspondante dans la table. Vous pouvez aussi effacer toutes les mouches de l'image en cours à l'aide du bouton **Delete all flies**. 
 
-**Remarque:** Il n'est pas possible de placer les points si l'on a pas défini <span style="color:red">**le sol**</span> et <span style="color:green">**l'échelle**</span> avant. Cela déclenchera un message d'erreur.
+**Remarque:** Il n'est pas possible de placer les points si l'on a pas défini <span style="color:red">**le sol**</span> et <span style="color: #03c945">**l'échelle**</span> avant. Cela déclenchera un message d'erreur.
 
 Le tableau renseigne diverses informations sur le point que vous venez de placer:
 
@@ -60,33 +74,33 @@ Le tableau renseigne diverses informations sur le point que vous venez de placer
 
 - **Fly ID:** Pour les **single flies**, permet d'identifier une même mouche présentes sur plusieurs images.
 
-- **Height (cm):** La distance en *centimètres* entre le point et <span style="color:red">**le sol**</span> selon <span style="color:green">**l'échelle**</span> donnée;
+- **Height (cm):** La distance en *centimètres* entre le point et <span style="color:red">**le sol**</span> selon <span style="color: #03c945">**l'échelle**</span> donnée;
 
 - **X position (px)** et **Y position (px):** Les coordonnées en *pixels* du point sur l'image.
 
 - Ainsi que toutes les métadonnées visible dans le panneau de gauche (ou définies à la création des ROI).
 
-## 5. Auto-détection des mouches
+## 4. Auto-détection des mouches
 
-Le bouton **Automatic Detection** permet de détecter automatiquement toutes les mouches situées dans les ROI actuellement définies. Elles apparaissent alors comme des <span style="color:blue">**cercles bleus**</span> plus foncés que les mouches placées manuellement, et la colonne "source" de la table indique si la mouche a été annotée automatiquement ou manuellement. Les mouches détectées ainsi ne peuvent être qu'en mode **group tubes**
+Le bouton **Automatic Detection** permet de détecter automatiquement toutes les mouches situées dans les ROI actuellement définies. Elles apparaissent alors comme des <span style="color:blue">**cercles bleus**</span> plus foncés que les mouches placées <span style="color: #03caca">manuellement</span>, et la colonne "source" de la table indique si la mouche a été annotée automatiquement ou manuellement. Les mouches détectées ainsi ne peuvent être qu'en mode **group tubes**
 
-Ces mouches peuvent êtres effacées en <span style="color:cyan">**mode mouche**</span> comme les autres, avec le **click droit**.
+Ces mouches peuvent êtres effacées en mode <span style="color: #03caca">**Fly**</span> comme les autres, avec le **click droit**.
 
 La détection automatique fonctionne par seuillage et suppose que les mouches sont des points **sombres** sur un fond **clair**. Dans le panneau de gauche, la section **Auto-detection** permet d'ajuster le seuil d'intensité lumineuse qui délimite les mouches du fond, ainsi que la taille min et max des mouches (aide quand les mouches sont collées les unes aux autres)
 
-## 6. Mises à jour de la table
+## 5. Mises à jour de la table
 
 A tout moment, il est possible de repasser en <span style="color:red">**mode sol**</span>, en <span style="color:green">**mode échelle**</span> pour redéfinir l'un ou l'autre. Le logiciel **recalculera** alors toutes les hauteurs de tous les points déja placés.
 
-On peut également repasser en <span style="color:magenta">**mode ROI**</span> pour ajouter ou supprimer des ROI. Si des mouches étaient présentes dans une ROI supprimée, alors les lignes correspondantes prennent les métadonnées par défaut (définies dans le panneau de gauche). De même, si une ROI est ajoutée et que des mouches se trouvent déja à l'intérieur, les lignes correspondantent se mettent à jour avec les métadonnées de la nouvelle ROI.
+On peut également repasser en <span style="color:magenta">**mode ROI**</span> pour ajouter ou supprimer des ROI. Si des mouches étaient présentes dans une ROI supprimé, leur ROI name redevient vide. De même, si une ROI est ajoutée et que des mouches se trouvent déja à l'intérieur, les lignes correspondantent se mettent à jour avec le nom de la nouvelle ROI.
 
-## 7. Navigation dans la vidéo.
+## 6. Navigation dans la vidéo.
 
-Parfois un fichier vidéo contient plusieurs éssais (trials). On peut donc ré-ouvrir la vidéo à l'aide du bouton **Select Next Trial** du menu **File**. Si on le fait, les mouches précédentes disparaissent de l'image mais restent dans la table et deviennent **figées**. Elles ne peuvent plus être recalculées, la seule façon de les modifier est manuellement, en cliquant sur la case de la table.
+Parfois un fichier vidéo contient plusieurs éssais. On peut donc ré-ouvrir la vidéo à l'aide du bouton **Navigate video** du menu **File**. Si on le fait, les mouches précédentes disparaissent de l'image mais restent dans la table et deviennent **figées**. Elles ne peuvent plus être recalculées, la seule façon de les modifier est manuellement, en cliquant sur la case de la table.
 
 Rien n'empêche alors de créer de nouveaux ROI, redéfinir l'échelle, le sol ou changer les métadonnées sans que celà n'impacte les données des trials précédents.
 
-## 4. Enregistrer son travail 📝
+## 7. Enregistrer son travail 📝
 
 L'image analysée peut être enregistrée au *format PNG*, via le bouton **Export image as PNG** du menu **File**. Son nom par défaut contient les informations affichées au dessus de l'image dans l'application.
 
