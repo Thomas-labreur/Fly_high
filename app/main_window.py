@@ -169,8 +169,18 @@ class MainWindow(QMainWindow):
         sep2.setStyleSheet("color: #ccc;")
         toolbar_layout.addWidget(sep2)
 
-        # Help button
+        # Counter of points
         toolbar_layout.addStretch()
+        self.fly_count_label = QLabel("0 point detected")
+        toolbar_layout.addWidget(self.fly_count_label)
+
+        # Separator
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.Shape.VLine)
+        sep3.setStyleSheet("color: #ccc;")
+        toolbar_layout.addWidget(sep3)
+
+        # Help button
         help_btn = QPushButton("Help")
         help_btn.clicked.connect(self.show_help)
         toolbar_layout.addWidget(help_btn)
@@ -335,6 +345,7 @@ class MainWindow(QMainWindow):
                 self.scene.removeItem(f["label"])
         self.fly_points = []
         self.frozen_rows = []
+        self._update_transform_lock()
 
     def open_table(self):
         if self.table.rowCount() > 0:
@@ -383,6 +394,7 @@ class MainWindow(QMainWindow):
             self.scene.removeItem(f["item"])
         self.fly_points = []
         self.image_loaded_since_table_load = False
+        self._update_transform_lock()
 
         # Remplir le panneau gauche avec les métadonnées de la dernière ligne
         if self.table.rowCount() > 0:
@@ -489,6 +501,7 @@ class MainWindow(QMainWindow):
             self.view.temp_line = None
             self.view.start_point = None
             self.fly_points = []
+            self._update_transform_lock()
             self.rois = []
 
             self._load_pixmap(dialog.selected_pixmap, from_video=True)
@@ -631,11 +644,18 @@ class MainWindow(QMainWindow):
         pixmap = self.original_pixmap
         rot = self.left_panel.get_rotation()
         if rot:
-            pixmap = pixmap.transformed(QTransform().rotate(rot))
+            pixmap = pixmap.transformed(QTransform().rotate(rot), Qt.TransformationMode.SmoothTransformation)
         if self.left_panel.get_flip():
             pixmap = pixmap.transformed(QTransform().scale(-1, 1))
         self.pixmap_item.setPixmap(pixmap)
         self.current_pixmap = pixmap
+
+    def _update_transform_lock(self):
+        locked = len(self.fly_points) > 0
+        self.left_panel.rotate_slider.setEnabled(not locked)
+        self.left_panel.rotation_label.setEnabled(not locked)
+        self.left_panel.rotation_title_label.setEnabled(not locked)
+        self.left_panel.flip_checkbox.setEnabled(not locked)
 
     def _on_metadata_changed(self, field, value):
         if field == "ROI name":
@@ -663,8 +683,11 @@ class MainWindow(QMainWindow):
         self.scale_cm_per_px = None
         self.view.last_line = None
         self.view.temp_line = None
+        self.view.temp_rect = None
         self.view.start_point = None
         self.fly_points = []
+        self.fly_count_label.setText(f"0 point detected")
+        self._update_transform_lock()
         self.rois = []
         self.frozen_rows = []
         self.current_video_path = None
@@ -739,26 +762,30 @@ class MainWindow(QMainWindow):
         self.recalculate_heights()
     
     def add_roi(self, rect):
-        names = self.left_panel.get_name_list("ROI name")
-        used_names = {roi.data(0) for roi in self.rois}
-        roi_name = next((n for n in names if n not in used_names), "")
+        if abs(rect.width()) <= 5 or abs(rect.height()) <= 5:
+            QMessageBox.information(self, "Small ROI", "To avoid issues, this software do not allow Roi to be less than 5x5 pixels.")
 
-        roi = QGraphicsRectItem(rect)
-        roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
-        roi.setData(0, roi_name)
-        self.scene.addItem(roi)
+        else:
+            names = self.left_panel.get_name_list("ROI name")
+            used_names = {roi.data(0) for roi in self.rois}
+            roi_name = next((n for n in names if n not in used_names), "")
 
-        label = QGraphicsTextItem(roi_name, roi)
-        label.setDefaultTextColor(Qt.GlobalColor.magenta)
-        font = QFont(); font.setBold(True); font.setPointSize(16)
-        label.setFont(font)
-        label.setPos(rect.x(), rect.y() - label.boundingRect().height())
+            roi = QGraphicsRectItem(rect)
+            roi.setPen(QPen(Qt.GlobalColor.magenta, 4))
+            roi.setData(0, roi_name)
+            self.scene.addItem(roi)
 
-        self.rois.append(roi)
-        for fly in self.fly_points:
-            if roi.rect().contains(fly["pos"]):
-                fly["snapshot"]["ROI name"] = roi_name
-        self.recalculate_heights()
+            label = QGraphicsTextItem(roi_name, roi)
+            label.setDefaultTextColor(Qt.GlobalColor.magenta)
+            font = QFont(); font.setBold(True); font.setPointSize(16)
+            label.setFont(font)
+            label.setPos(rect.x(), rect.y() - label.boundingRect().height())
+
+            self.rois.append(roi)
+            for fly in self.fly_points:
+                if roi.rect().contains(fly["pos"]):
+                    fly["snapshot"]["ROI name"] = roi_name
+            self.recalculate_heights()
 
     def remove_roi(self, item):
         rect = item.rect()
@@ -832,6 +859,7 @@ class MainWindow(QMainWindow):
         })
         self.recalculate_heights()
         self.delete_all_btn.setEnabled(True)
+        self._update_transform_lock()
 
     def remove_fly(self, item):
         for f in self.fly_points:
@@ -843,6 +871,7 @@ class MainWindow(QMainWindow):
         self.fly_points = [f for f in self.fly_points if f["item"] != item]
         self.recalculate_heights()
         self.delete_all_btn.setEnabled(len(self.fly_points)>0)
+        self._update_transform_lock()
 
     def delete_all_flies(self):
         msg = QMessageBox(self)
@@ -868,6 +897,7 @@ class MainWindow(QMainWindow):
         self.fly_points = [f for f in self.fly_points if f not in to_remove]
         self.recalculate_heights()
         self.delete_all_btn.setEnabled(len(self.fly_points) > 0)
+        self._update_transform_lock()
 
     def _reassign_fly_ids(self):
         names = self.left_panel.get_name_list("Fly ID")
@@ -927,6 +957,10 @@ class MainWindow(QMainWindow):
             ]:
                 self.table.setItem(row, self.ALL_COLUMNS.index(field), QTableWidgetItem(value))
 
+        # update counter of points
+        n = len(self.fly_points)
+        self.fly_count_label.setText(f"{n} point{'s' if n>1 else ''} detected")
+
     def segment_flies_auto(self):
         if not self.rois:
             QMessageBox.warning(self, "No ROI", "Draw at least one ROI first.")
@@ -944,9 +978,11 @@ class MainWindow(QMainWindow):
             self.current_pixmap.toImage().Format.Format_RGB888
         )
         width, height = qimg.width(), qimg.height()
+        bytes_per_line = qimg.bytesPerLine()
         ptr = qimg.bits()
-        ptr.setsize(height * width * 3)
-        frame_rgb = np.frombuffer(ptr, dtype=np.uint8).reshape((height, width, 3))
+        ptr.setsize(height * bytes_per_line)
+        arr = np.frombuffer(ptr, dtype=np.uint8).reshape((height, bytes_per_line))
+        frame_rgb = arr[:, :width * 3].reshape((height, width, 3))
         gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
 
         params = self.left_panel.get_detection_params()
@@ -998,6 +1034,7 @@ class MainWindow(QMainWindow):
 
         self.recalculate_heights()
         self.delete_all_btn.setEnabled(len(self.fly_points)>0)
+        self._update_transform_lock()
         QMessageBox.information(self, "Detection done",
                                 f"{count} fly(ies) detected automatically.")
         

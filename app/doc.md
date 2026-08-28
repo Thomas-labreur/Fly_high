@@ -14,7 +14,9 @@ L'image apparaît à droite de la fenêtre principale. La molette de la souris p
 
 **Remarque:** Si une image était déja ouverte dans le logiciel, elle est fermée et est remplacée par la nouvelle.
 
-Sur le panneau de Gauche, il existe une section **Image transform** permettant d'effectuer des rotations de 90°, ou bien un flip horizontal de l'image si nécessaire.
+L'image sélectionnée peut être enregistrée au *format PNG*, via le bouton **Export image as PNG** du menu **File**. Son nom par défaut contient les informations affichées au dessus de l'image dans l'application.
+
+Sur le panneau de Gauche, il existe une section **Image transform** permettant d'effectuer des rotations, ou bien un flip horizontal de l'image si nécessaire. Ces parmètres ne peuvent plus être modifiés à partir du moment où un <span style="color: #03caca">point</span> a été placée sur l'image (cf section 3.4).
 
 Le menu **File** permet également d'ouvrir une table, afin d'y ajouter vos nouvelles données, ou bien de créer une nouvelle table vierge (choix par défaut à l'ouverture de l'application). Lorsqu'une table est ouverte, toutes les lignes des trials précédents sont gelées (elles ne seront plus affectées par des création / suppression de ROI mais peuvent uniquement être modifiées manuellement par double click sur une cellule).
 
@@ -52,7 +54,7 @@ Comme on doit mesurer la hauteur des mouches par rapport au sol, il faut commenc
 
 Dans le mode <span style="color:magenta">ROI</span>: 
 
-- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire, les ROI. La section **ROI name** du panneau de gauche permet de rentrer un nom pour chaque ROI, séparés par des virgules (à faire AVANT de tracer la ROI). Quand une ROI est créé, les mouches situées à l'intérieur avant ou apres cette création, auront leur colonne "ROI name" remplie avec ce nom.
+- le **click gauche** sur l'image permet de définir des régions d'intérêt de forme rectangulaire, les ROI. La section **ROI name** du panneau de gauche permet de rentrer un nom pour chaque ROI, séparés par des virgules (à faire AVANT de tracer la ROI). Quand une ROI est créé, les mouches situées à l'intérieur avant ou apres cette création, auront leur colonne "ROI name" remplie avec ce nom. Une ROI ne peut pas être plus petite que 5x5 pixels pour éviter certains bugs.
 
 - le **click droit** à l'intérieur d'une ROI permet de la supprimer. A ce moment là les mouches qui étaient à l'intérieur voient leur ROI name redevenir vide.
 
@@ -62,7 +64,7 @@ Dans le mode <span style="color:magenta">ROI</span>:
 
 Dans le mode <span style="color: #03caca">Fly</span>:
 
-- **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans la table. En mode **singlefly**, il faut également donner un identifiant à la mouche
+- **Click gauche** sur l'image place un point bleu à l'endroit du click. Celà fait également apparaître une ligne dans la table. En mode **singlefly**, il faut également donner un identifiant à la mouche. Un compteur situé en haut à droite de l'écran indique le nombre de points actuellement dessinés.
 
 - **Click droit** sur un point déja tracé permet d'effacer ce point et la ligne correspondante dans la table. Vous pouvez aussi effacer toutes les mouches de l'image en cours à l'aide du bouton **Delete all flies**. 
 
@@ -74,7 +76,7 @@ Le tableau renseigne diverses informations sur le point que vous venez de placer
 
 - **Fly ID:** Pour les **single flies**, permet d'identifier une même mouche présentes sur plusieurs images.
 
-- **Height (cm):** La distance en *centimètres* entre le point et <span style="color:red">**le sol**</span> selon <span style="color: #03c945">**l'échelle**</span> donnée;
+- **Height (cm):** La distance en *centimètres* entre le point et <span style="color:red">**le sol**</span> selon <span style="color: #03c945">**l'échelle**</span> donnée. Cette hauteur est la distance **orthogonale** du point à la droite du <span style="color:red">sol</span>;
 
 - **X position (px)** et **Y position (px):** Les coordonnées en *pixels* du point sur l'image.
 
@@ -102,9 +104,7 @@ Rien n'empêche alors de créer de nouveaux ROI, redéfinir l'échelle, le sol o
 
 ## 7. Enregistrer son travail 📝
 
-L'image analysée peut être enregistrée au *format PNG*, via le bouton **Export image as PNG** du menu **File**. Son nom par défaut contient les informations affichées au dessus de l'image dans l'application.
-
-Lorsque tous vos points sont placés et que vous êtes satisfait du résultat, vous ppuvez cliquer sur le bouton **Export table as CSV** situé dans le menu **File** pour enregistrer ce dernier. Sélectionnez un emplacement sur votre machine et entrez un nom pour ce fichier afin de l'enregistrer au *format CSV*.
+Lorsque tous vos points sont placés et que vous êtes satisfait du résultat, vous pouvez cliquer sur le bouton **Export table as CSV** situé dans le menu **File** pour enregistrer ce dernier. Sélectionnez un emplacement sur votre machine et entrez un nom pour ce fichier afin de l'enregistrer au *format CSV*.
 
 Le bouton ***Export figure-ready as XLSX** permet de générer un fichier excel contenant différentes feuilles construites à partir de la table, pensées pour générer des figures facilement via excel. La liste de ces feuilles est la suivantes:
 

@@ -18,7 +18,7 @@ class LeftPanel(QWidget):
         self._on_metadata_change = on_metadata_change
         self._on_transform_change = on_transform_change
         super().__init__(parent)
-        self.setFixedWidth(220)
+        self.setFixedWidth(250)
         self.setStyleSheet("""
             QWidget {
                 background-color: #f5f5f5;
@@ -159,15 +159,17 @@ class LeftPanel(QWidget):
         transform_form.addRow(self.flip_checkbox)
 
         rotate_layout = QHBoxLayout()
-        self.rotate_btn = QPushButton("↻ +90°")
-        self.rotate_btn.setStyleSheet("font-size: 11px;")
+        self.rotate_slider = QSlider(Qt.Orientation.Horizontal)
+        self.rotate_slider.setRange(-180, 180)
+        self.rotate_slider.setValue(0)
         self.rotation_label = QLabel("0°")
         self.rotation_label.setStyleSheet("font-size: 11px; color: #555;")
-        rotate_layout.addWidget(self.rotate_btn)
+        rotate_layout.addWidget(self.rotate_slider)
         rotate_layout.addWidget(self.rotation_label)
-        transform_form.addRow(QLabel("Rotation"), rotate_layout)
+        self.rotation_title_label = QLabel("Rotation")
+        transform_form.addRow(self.rotation_title_label, rotate_layout)
         self._rotation = 0
-        self.rotate_btn.clicked.connect(self._on_rotate)
+        self.rotate_slider.valueChanged.connect(self._on_rotate)
 
         inner_layout.addWidget(transform_group)
 
@@ -281,7 +283,7 @@ class LeftPanel(QWidget):
         self.max_area_spin.setValue(int(s.value("detection/max_area", 500)))
 
     def _on_rotate(self):
-        self._rotation = (self._rotation + 90) % 360
+        self._rotation = self.rotate_slider.value()
         self.rotation_label.setText(f"{self._rotation}°")
         self._trigger_transform()
 

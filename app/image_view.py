@@ -17,16 +17,12 @@ class ImageView(QGraphicsView):
         self.last_line = None
         self.zoom_factor = 1.15
         self._pan_start = None
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
 
     def wheelEvent(self, event):
-        mouse_scene_pos = self.mapToScene(event.position().toPoint())
         zoom = self.zoom_factor if event.angleDelta().y() > 0 else 1 / self.zoom_factor
         self.scale(zoom, zoom)
-        new_mouse_scene_pos = self.mapToScene(event.position().toPoint())
-        delta = new_mouse_scene_pos - mouse_scene_pos
-        self.translate(delta.x(), delta.y())
 
     def mousePressEvent(self, event):
         pos = self.mapToScene(event.pos())
@@ -44,6 +40,7 @@ class ImageView(QGraphicsView):
             color = Qt.GlobalColor.red if self.mode == "ground" else Qt.GlobalColor.green
             self.temp_line.setPen(QPen(color, 4))
             self.scene().addItem(self.temp_line)
+
         elif self.mode == "roi":
             if event.button() == Qt.MouseButton.RightButton:
                 items = self.scene().items()  # tous les items
@@ -52,10 +49,17 @@ class ImageView(QGraphicsView):
                         self.parent.remove_roi(item)
                         break
             else:
+                if self.temp_rect is not None:
+                    try:
+                        self.scene().removeItem(self.temp_rect)
+                    except Exception:
+                        pass
+                    self.temp_rect = None
                 self.start_point = pos
                 self.temp_rect = QGraphicsRectItem()
                 self.temp_rect.setPen(QPen(Qt.GlobalColor.magenta, 4))
                 self.scene().addItem(self.temp_rect)
+
         elif self.mode == "fly":
             if event.button() == Qt.MouseButton.RightButton:
                 items = self.scene().items(pos)
@@ -83,12 +87,14 @@ class ImageView(QGraphicsView):
             )
 
         elif self.temp_rect:
-            pos = self.mapToScene(event.pos())
-            x,y = self.start_point.x(), self.start_point.y()
-            w = pos.x() - x
-            h = pos.y() - y
-            self.temp_rect.setRect(x, y, w, h)
-
+            if self.temp_rect.scene() is None:
+                self.temp_rect = None
+            else:
+                pos = self.mapToScene(event.pos())
+                x,y = self.start_point.x(), self.start_point.y()
+                w = pos.x() - x
+                h = pos.y() - y
+                self.temp_rect.setRect(x, y, w, h)
 
     def mouseReleaseEvent(self, event):
         if self.mode == "nav":
